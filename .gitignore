@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / test caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+build/
+dist/
+*.egg-info
+
+# Wheels (preserve offline spaCy language package for docker/offline builds)
+wheels/*.whl
+!wheels/en_core_web_sm-3.8.0-py3-none-any.whl
+
+# Virtual environments and agent rules
+.venv/
+.agents/
+GEMINI.md
+NEEDS_HUMAN.txt
+
+# Secrets, Credentials, and Environment Files
+.env
+.env.local
+.env.*.local
+secrets/
+!.env.example
+
+# Runtime persistent data, sessions, and logs
+data/
+*.log
+
+# Scratch playground (keep test cache fixtures & CLI helper)
+playground/
+
+# Operating system artifacts
+.DS_Store
+Thumbs.db

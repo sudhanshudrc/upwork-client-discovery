@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.coverage
+htmlcov
+.env
+secrets/upwork_state.json
+secrets/.env
+data/snapshots/*
+data/exports/*
+*.xlsx
+
