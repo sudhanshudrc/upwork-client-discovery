@@ -1,0 +1,100 @@
+:root {
+  /* Canvas and Base Surfaces - Mossy Hollow Palette */
+  --color-canvas-bg: #F8F9F3;
+  --color-surface-nav: #FFFFFF;
+  --color-surface-card: #FFFFFF;
+  --color-surface-subtle: #EFF2E3;
+  --color-surface-sunken: #E7EBD6;
+
+  /* Structural Borders */
+  --color-border-subtle: #E1E4D3;
+  --color-border-default: #BAC095;
+  --color-border-strong: #636B2F;
+
+  /* Typography - High Contrast WCAG AAA Compliant */
+  --color-text-primary: #3D4127;
+  --color-text-secondary: #4D5333;
+  --color-text-muted: #656C43;
+  --color-text-inverse: #F8F9F3;
+
+  /* Brand Interactive States */
+  --color-brand-primary: #636B2F;
+  --color-brand-hover: #505724;
+  --color-brand-active: #3D4127;
+  --color-brand-tint: #EFF4DC;
+
+  /* Decision-Maker Scoring Tiers */
+  --color-tier-a-bg: #EFF4DC;
+  --color-tier-a-border: #636B2F;
+  --color-tier-a-text: #3D4127;
+
+  --color-tier-b-bg: #F4F6EA;
+  --color-tier-b-border: #BAC095;
+  --color-tier-b-text: #3D4127;
+
+  --color-tier-c-bg: #F8F9F3;
+  --color-tier-c-border: #D8DCC5;
+  --color-tier-c-text: #656C43;
+
+  /* System Indicators */
+  --color-status-success: #636B2F;
+  --color-status-warning: #B37D2C;
+  --color-status-error: #B91C1C;
+  --color-status-info: #4A6B82;
+
+  /* Elevations */
+  --shadow-card: 0 1px 3px 0 rgba(61, 65, 39, 0.05), 0 1px 2px -1px rgba(61, 65, 39, 0.04);
+  --shadow-elevated: 0 4px 6px -1px rgba(61, 65, 39, 0.07), 0 2px 4px -2px rgba(61, 65, 39, 0.05);
+  --shadow-modal: 0 20px 25px -5px rgba(61, 65, 39, 0.16), 0 8px 10px -6px rgba(61, 65, 39, 0.08);
+
+  /* Radius and Durations */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+}
+
+.dark {
+  /* Dark Mode Surfaces - Deep Mossy Forest */
+  --color-canvas-bg: #15180E;
+  --color-surface-nav: #202414;
+  --color-surface-card: #202414;
+  --color-surface-subtle: #292E1B;
+  --color-surface-sunken: #11130B;
+
+  /* Dark Borders */
+  --color-border-subtle: #2E331E;
+  --color-border-default: #4A5129;
+  --color-border-strong: #BAC095;
+
+  /* Dark Typography */
+  --color-text-primary: #F8F9F3;
+  --color-text-secondary: #DCE1C4;
+  --color-text-muted: #BAC095;
+  --color-text-inverse: #15180E;
+
+  /* Brand */
+  --color-brand-primary: #D4DE95;
+  --color-brand-hover: #E4EBB2;
+  --color-brand-active: #F2F7CC;
+  --color-brand-tint: #2B3118;
+
+  /* Tiers */
+  --color-tier-a-bg: #2B3118;
+  --color-tier-a-border: #D4DE95;
+  --color-tier-a-text: #F8F9F3;
+
+  --color-tier-b-bg: #222714;
+  --color-tier-b-border: #BAC095;
+  --color-tier-b-text: #DCE1C4;
+
+  --color-tier-c-bg: #1B1E10;
+  --color-tier-c-border: #3A4023;
+  --color-tier-c-text: #BAC095;
+
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.65);
+}

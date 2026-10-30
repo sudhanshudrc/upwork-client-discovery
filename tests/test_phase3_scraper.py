@@ -121,3 +121,73 @@ async def test_jitter_rate_limiter():
     t = await apply_jitter_delay(min_seconds=0.01, max_seconds=0.05)
     assert 0.01 <= t <= 0.05
 
+
+@pytest.mark.anyio
+async def test_search_feed_1_hour_database_cache():
+    """Verify 1-hour database caching logic on search_runs table."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.search_run import SearchRun
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    sample_jobs = [
+        {"uid": "998877", "title": "CRM Automation Engineer", "budget": "$500"},
+        {"uid": "998878", "title": "FastAPI Lead Architect", "budget": "$1200"},
+    ]
+
+    async with session_factory() as session:
+        # 1. Insert a fresh SearchRun (< 60 minutes ago)
+        fresh_run = SearchRun(
+            search_query="automation",
+            target_limit=15,
+            total_jobs_found=len(sample_jobs),
+            status="COMPLETED",
+            raw_jobs_payload=sample_jobs,
+            is_cached_hit=False,
+        )
+        session.add(fresh_run)
+        await session.commit()
+        await session.refresh(fresh_run)
+
+        # 2. Query within 1 hour: Must HIT database cache
+        cached_result = await scraper_service.search_feed(
+            query="automation",
+            limit=10,
+            force_live=False,
+            session=session,
+        )
+        assert cached_result["is_cached"] is True
+        assert cached_result["total_extracted"] == 2
+        assert cached_result["jobs"][0]["uid"] == "998877"
+        assert cached_result["expires_in_seconds"] > 3500
+
+        # 3. Query case-insensitively ('AuToMaTiOn'): Must also HIT cache
+        case_result = await scraper_service.search_feed(
+            query="  AuToMaTiOn  ",
+            limit=10,
+            force_live=False,
+            session=session,
+        )
+        assert case_result["is_cached"] is True
+        assert case_result["total_extracted"] == 2
+
+        # 4. Modify run timestamp to simulate > 1 hour expiration
+        fresh_run.created_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        session.add(fresh_run)
+        await session.commit()
+
+        # Check expired run directly: search_feed will bypass it because age >= 3600
+        # In an environment without Upwork auth, live search raises RuntimeError, confirming cache miss
+        with pytest.raises(Exception):
+            await scraper_service.search_feed(
+                query="automation",
+                limit=10,
+                force_live=False,
+                session=session,
+            )
+
+

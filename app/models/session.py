@@ -53,8 +53,27 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Creates database tables if they do not exist."""
+    """Creates database tables if they do not exist and synchronizes missing columns."""
+    from sqlalchemy import text
     import app.models  # noqa: F401 - Register all models with Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Apply schema column synchronizations for existing deployments
+        if not is_sqlite:
+            await conn.execute(
+                text(
+                    "ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS raw_jobs_payload JSON;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS is_cached_hit BOOLEAN NOT NULL DEFAULT FALSE;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_search_runs_query_created ON search_runs (search_query, created_at);"
+                )
+            )
 

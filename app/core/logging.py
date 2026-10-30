@@ -74,7 +74,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Logs incoming HTTP requests, duration in milliseconds, and status codes."""
+    """Logs incoming HTTP requests, duration in milliseconds, status codes, and failure reasons."""
 
     def __init__(self, app):
         super().__init__(app)
@@ -92,19 +92,54 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             duration_ms = (time.perf_counter() - start_time) * 1000.0
 
-            log_msg = f"{client_ip} - \"{method} {full_path}\" {response.status_code} ({duration_ms:.1f}ms)"
+            error_detail = getattr(request.state, "error_detail", None)
+
+            # If response indicates failure but error_detail was not set on request.state, extract from body
+            if response.status_code >= 400 and not error_detail:
+                try:
+                    body_chunks = []
+                    async for chunk in response.body_iterator:
+                        body_chunks.append(chunk)
+                    body_bytes = b"".join(body_chunks)
+
+                    import json
+                    try:
+                        parsed = json.loads(body_bytes.decode("utf-8"))
+                        if isinstance(parsed, dict) and "detail" in parsed:
+                            error_detail = parsed["detail"]
+                    except Exception:
+                        error_detail = body_bytes.decode("utf-8", errors="replace").strip()[:200]
+
+                    from starlette.responses import Response as StarletteResponse
+                    response = StarletteResponse(
+                        content=body_bytes,
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                        media_type=response.media_type,
+                    )
+                except Exception as body_err:
+                    self.logger.debug(f"Failed extracting response body for error logging: {body_err}")
+
+            reason_suffix = f" - REASON: {error_detail}" if error_detail else ""
+
             if response.status_code >= 500:
-                self.logger.error(log_msg)
+                self.logger.error(
+                    f"[FAILED] {client_ip} - \"{method} {full_path}\" {response.status_code} ({duration_ms:.1f}ms){reason_suffix}"
+                )
             elif response.status_code >= 400:
-                self.logger.warning(log_msg)
+                self.logger.warning(
+                    f"[FAILED] {client_ip} - \"{method} {full_path}\" {response.status_code} ({duration_ms:.1f}ms){reason_suffix}"
+                )
             else:
-                self.logger.info(log_msg)
+                self.logger.info(
+                    f"{client_ip} - \"{method} {full_path}\" {response.status_code} ({duration_ms:.1f}ms)"
+                )
 
             return response
         except Exception as exc:
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             self.logger.error(
-                f"{client_ip} - \"{method} {full_path}\" FAILED after {duration_ms:.1f}ms: {exc}",
+                f"[FAILED] {client_ip} - \"{method} {full_path}\" FAILED after {duration_ms:.1f}ms - REASON: {type(exc).__name__}: {exc}",
                 exc_info=True,
             )
             raise

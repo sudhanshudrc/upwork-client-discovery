@@ -24,6 +24,15 @@ from app.schemas.job import (
     JobSummaryResponse,
     JobDetailResponse,
 )
+from app.schemas.dashboard import (
+    JobDomainItem,
+    JobDomainJobsResponse,
+    DashboardStatsResponse,
+    OriginJobSummary,
+    DiscoveredCandidateSummary,
+    DashboardClientItem,
+    HarvestedJobItem,
+)
 
 __all__ = [
     "UpworkCredentialsCreate",
@@ -47,5 +56,12 @@ __all__ = [
     "JobCreate",
     "JobSummaryResponse",
     "JobDetailResponse",
+    "JobDomainItem",
+    "JobDomainJobsResponse",
+    "DashboardStatsResponse",
+    "OriginJobSummary",
+    "DiscoveredCandidateSummary",
+    "DashboardClientItem",
+    "HarvestedJobItem",
 ]
 

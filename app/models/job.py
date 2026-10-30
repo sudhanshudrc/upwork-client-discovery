@@ -69,6 +69,13 @@ class Job(Base):
         order_by="Candidate.rank_order",
     )
 
+    @property
+    def contracts(self):
+        """Expose client contracts on job for JobDetailResponse serialization."""
+        if self.client and hasattr(self.client, "contracts"):
+            return self.client.contracts
+        return []
+
     __table_args__ = (
         Index("idx_jobs_uid", "job_uid"),
         Index("idx_jobs_pay", "pay_type", "budget_max_usd"),

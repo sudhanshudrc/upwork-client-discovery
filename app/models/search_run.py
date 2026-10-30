@@ -1,5 +1,5 @@
-from typing import List, TYPE_CHECKING
-from sqlalchemy import Index, Integer, String
+from typing import List, Optional, TYPE_CHECKING
+from sqlalchemy import Boolean, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
@@ -19,6 +19,12 @@ class SearchRun(Base):
         String(30), default="COMPLETED", nullable=False
     )
 
+    # 1-Hour Cache Payload & Telemetry
+    raw_jobs_payload: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, default=list
+    )
+    is_cached_hit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     jobs: Mapped[List["Job"]] = relationship(
         "Job", back_populates="search_run", cascade="all, delete-orphan"
@@ -27,5 +33,6 @@ class SearchRun(Base):
     __table_args__ = (
         Index("idx_search_runs_created", "created_at"),
         Index("idx_search_runs_query", "search_query"),
+        Index("idx_search_runs_query_created", "search_query", "created_at"),
     )
 

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 from playwright.async_api import async_playwright
 from selectolax.lexbor import LexborHTMLParser
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,6 +30,38 @@ def clean_text(text: Optional[str]) -> Optional[str]:
         return None
     cleaned = re.sub(r"\s+", " ", text).strip()
     return cleaned if cleaned else None
+
+
+def clean_budget(text: Optional[str]) -> str:
+    """Normalizes raw Upwork i18n budget strings into readable format."""
+    if not text:
+        return "Hourly"
+    raw_lower = text.lower()
+    if "connect_jobtypes" in raw_lower or "hourly" in raw_lower:
+        match = re.search(r"\$\d+(?:\.\d+)?(?:\s*-\s*\$\d+(?:\.\d+)?)?", text)
+        return match.group(0) if match else "Hourly"
+    if "fixed" in raw_lower:
+        match = re.search(r"\$\d+(?:\.\d+)?", text)
+        return match.group(0) if match else "Fixed Price"
+    return text
+
+
+def clean_experience_level(text: Optional[str]) -> Optional[str]:
+    """Normalizes raw Upwork contractor tier or i18n keys into human readable titles."""
+    if not text:
+        return None
+    lower = text.lower()
+    if "intermediate" in lower:
+        return "Intermediate"
+    if "expert" in lower:
+        return "Expert"
+    if "entry" in lower:
+        return "Entry Level"
+    if "_" in text:
+        cleaned = re.sub(r"^[0-9a-zA-Z]+_", "", text)
+        cleaned = re.sub(r"_[0-9a-zA-Z]+$", "", cleaned)
+        return cleaned.title() if cleaned else "Intermediate"
+    return text
 
 
 def parse_currency_amount(text: Optional[str]) -> Optional[Decimal]:
@@ -101,10 +133,10 @@ def parse_search_feed_html(html: str) -> List[Dict[str, Any]]:
         title = clean_text(title_el.text()) if title_el else "Upwork Job"
 
         type_el = art.css_first("[data-test='job-type-label'], [data-test='is-fixed-price'], [data-test='is-hourly']")
-        budget_str = clean_text(type_el.text()) if type_el else "Hourly"
+        budget_str = clean_budget(type_el.text()) if type_el else "Hourly"
 
         exp_el = art.css_first("[data-test='experience-level'], [data-test='contractor-tier']")
-        exp_str = clean_text(exp_el.text()) if exp_el else None
+        exp_str = clean_experience_level(exp_el.text()) if exp_el else None
 
         desc_el = art.css_first("[data-test='job-description-text'], .job-description, p")
         desc_str = clean_text(desc_el.text()) if desc_el else ""
@@ -128,8 +160,11 @@ def parse_search_feed_html(html: str) -> List[Dict[str, Any]]:
             "budget": budget_str,
             "experience_level": exp_str,
             "snippet": desc_str,
+            "client_spent": spent_str,
             "client_spent_snippet": spent_str,
+            "client_location": loc_str,
             "client_location_snippet": loc_str,
+            "location": loc_str,
             "proposals_tier": prop_str or "Less than 5",
             "payment_verified": is_verified,
         })
@@ -348,15 +383,59 @@ class UpworkScraperService:
         """
         Extracts the top available jobs from Upwork search feed matching the user query.
         Saves Stage 1 snapshot to disk and inserts into the database.
+        Includes 1-hour database caching: if the same query was executed within 60 minutes,
+        it serves immediately from PostgreSQL unless force_live=True.
         """
+        clean_query = query.strip()
         run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
         snapshot_dir = settings.SNAPSHOTS_DIR / "stage1_feeds"
         snapshot_dir.mkdir(parents=True, exist_ok=True)
         snapshot_file = snapshot_dir / f"{run_id}_feed.json"
 
-        # Live Search Execution
-        search_url = f"https://www.upwork.com/nx/search/jobs/?sort=recency&q={quote_plus(query)}"
-        logger.info(f"[SCRAPER] Executing live feed search for query: '{query}' (user: {user_identifier or 'guest'})")
+        # 1. Check 1-Hour Database Cache
+        if session and not force_live:
+            cache_stmt = (
+                select(SearchRun)
+                .where(
+                    func.lower(SearchRun.search_query) == clean_query.lower(),
+                    SearchRun.status == "COMPLETED",
+                )
+                .order_by(SearchRun.created_at.desc())
+                .limit(1)
+            )
+            cache_res = await session.execute(cache_stmt)
+            latest_run = cache_res.scalars().first()
+
+            if latest_run and latest_run.created_at and latest_run.raw_jobs_payload:
+                now_utc = datetime.now(timezone.utc)
+                created_utc = latest_run.created_at
+                if created_utc.tzinfo is None:
+                    created_utc = created_utc.replace(tzinfo=timezone.utc)
+
+                age_seconds = (now_utc - created_utc).total_seconds()
+                if age_seconds < 3600:
+                    age_minutes = int(age_seconds // 60)
+                    expires_in = max(0, int(3600 - age_seconds))
+                    logger.info(
+                        f"[SCRAPER] [CACHE HIT] Found active 1-hour database cache for query '{clean_query}' "
+                        f"(Run ID: {latest_run.id}, Age: {age_minutes}m, Jobs: {len(latest_run.raw_jobs_payload)}, Expires in: {expires_in}s)"
+                    )
+                    cached_jobs = latest_run.raw_jobs_payload[:limit]
+                    return {
+                        "run_id": f"cached_{latest_run.id}",
+                        "db_run_id": str(latest_run.id),
+                        "query": latest_run.search_query,
+                        "total_extracted": len(cached_jobs),
+                        "snapshot_path": f"data/snapshots/stage1_feeds/{latest_run.id}_feed.json",
+                        "jobs": cached_jobs,
+                        "is_cached": True,
+                        "cached_at": created_utc.isoformat(),
+                        "expires_in_seconds": expires_in,
+                    }
+
+        # 2. Live Search Execution
+        search_url = f"https://www.upwork.com/nx/search/jobs/?sort=recency&q={quote_plus(clean_query)}"
+        logger.info(f"[SCRAPER] Executing live feed search for query: '{clean_query}' (user: {user_identifier or 'guest'})")
 
         auth_failed = False
         challenge_encountered = False
@@ -409,17 +488,17 @@ class UpworkScraperService:
                         "Cloudflare or bot protection blocked the request. Fresh authenticated cookies are required."
                     )
                 if any(k in body_text.lower() for k in ["didn't find any jobs", "no jobs found", "0 jobs found"]):
-                    logger.info(f"[SCRAPER] Query '{query}' legitimately returned 0 matching jobs.")
+                    logger.info(f"[SCRAPER] Query '{clean_query}' legitimately returned 0 matching jobs.")
                 elif user_identifier:
                     raise RuntimeError(
                         f"No job cards could be rendered on Upwork for '{user_identifier}'. "
                         "The session cookies may be inactive or expired. Try refreshing cookies or search as guest."
                     )
 
-        # Save Stage 1 Snapshot
+        # 3. Save Stage 1 Snapshot to Disk
         payload = {
             "run_id": run_id,
-            "query": query,
+            "query": clean_query,
             "total_extracted": len(jobs),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "jobs": jobs,
@@ -427,26 +506,35 @@ class UpworkScraperService:
         with open(snapshot_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
 
-        # Sync to Database if session provided
+        # 4. Sync to Database if session provided
         db_run = None
         if session:
             db_run = SearchRun(
-                search_query=query,
+                search_query=clean_query,
                 target_limit=limit,
                 total_jobs_found=len(jobs),
                 status="COMPLETED",
+                raw_jobs_payload=jobs,
+                is_cached_hit=False,
             )
             session.add(db_run)
             await session.commit()
             await session.refresh(db_run)
+            logger.info(
+                f"[DATABASE] Saved SearchRun {db_run.id} for query '{clean_query}' with {len(jobs)} jobs"
+            )
 
+        now_iso = datetime.now(timezone.utc).isoformat()
         return {
             "run_id": run_id,
             "db_run_id": str(db_run.id) if db_run else None,
-            "query": query,
+            "query": clean_query,
             "total_extracted": len(jobs),
             "snapshot_path": str(snapshot_file),
             "jobs": jobs,
+            "is_cached": False,
+            "cached_at": now_iso,
+            "expires_in_seconds": 3600,
         }
 
     async def scrape_job_details(
