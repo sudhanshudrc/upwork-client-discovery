@@ -410,5 +410,18 @@ export const api = {
   getExcelExportUrl(jobUid: string): string {
     return `${API_BASE}/leads/${encodeURIComponent(jobUid)}/export`;
   },
+
+  // Batch Excel Export URL Generator (Keyword / All Completed Jobs)
+  getBatchExcelExportUrl(query?: string, completedOnly = true): string {
+    const params = new URLSearchParams();
+    if (query && query.trim()) {
+      params.set('query', query.trim());
+    }
+    if (completedOnly) {
+      params.set('completed_only', 'true');
+    }
+    const qs = params.toString();
+    return `${API_BASE}/leads/export${qs ? `?${qs}` : ''}`;
+  },
 };
 

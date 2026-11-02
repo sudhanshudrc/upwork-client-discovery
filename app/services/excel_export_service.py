@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from app.models.candidate import Candidate
 from app.models.client import Client
 from app.models.intelligence import ClientIntelligence
 from app.models.job import Job
+from app.models.search_run import SearchRun
 from app.services.geo_resolver_service import geo_resolver
 
 logger = logging.getLogger("app.services.excel")
@@ -424,6 +425,8 @@ class ExcelExportService:
         self,
         session: AsyncSession,
         job_uid: Optional[str] = None,
+        query: Optional[str] = None,
+        completed_only: bool = False,
         min_spend: Optional[Decimal] = None,
         tier: Optional[str] = None,
         country: Optional[str] = None,
@@ -432,6 +435,8 @@ class ExcelExportService:
     ) -> Path:
         """
         Dynamically filters database jobs and generates the Master 46-Column Excel Workbook.
+        Supports filtering by specific job UID, search query keyword, pipeline completion status,
+        client spend, candidate tier, and country.
         """
         stmt = (
             select(Job)
@@ -445,6 +450,24 @@ class ExcelExportService:
 
         if job_uid:
             stmt = stmt.filter(Job.job_uid == job_uid)
+
+        if query and query.strip():
+            clean_q = f"%{query.strip()}%"
+            stmt = stmt.outerjoin(Job.search_run).filter(
+                or_(
+                    SearchRun.search_query.ilike(clean_q),
+                    Job.title.ilike(clean_q),
+                    Job.skills_tags.ilike(clean_q),
+                )
+            )
+
+        if completed_only:
+            stmt = stmt.filter(
+                or_(
+                    Job.candidates.any(),
+                    Job.intelligence.has(),
+                )
+            )
 
         if country:
             stmt = stmt.join(Job.client).filter(Client.country.ilike(f"%{country}%"))
@@ -464,10 +487,16 @@ class ExcelExportService:
                     filtered_jobs.append(j)
             jobs = filtered_jobs
 
-        logger.info(f"[EXCEL] Generating leads workbook for {len(jobs)} jobs (output: {output_path or 'default'})...")
+        # Dynamic output path based on search query if not provided
+        target_path = output_path
+        if not target_path and query and query.strip():
+            clean_name = re.sub(r"[^a-zA-Z0-9_-]", "_", query.strip().lower())
+            target_path = settings.EXPORTS_DIR / f"leads_{clean_name}.xlsx"
+
+        logger.info(f"[EXCEL] Generating leads workbook for {len(jobs)} jobs (query: '{query or 'all'}', output: {target_path or 'default'})...")
         path = self.generate_leads_workbook(
             jobs=jobs,
-            output_path=output_path,
+            output_path=target_path,
             only_primary=only_primary,
         )
         logger.info(f"[EXCEL] Successfully generated sales-ready Excel workbook: {path}")

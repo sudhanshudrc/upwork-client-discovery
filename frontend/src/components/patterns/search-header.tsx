@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, RefreshCw, Sparkles } from 'lucide-react';
+import { Search, RefreshCw, Sparkles, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -15,6 +15,7 @@ interface SearchHeaderProps {
   onRunSinglePipeline?: () => void;
   isRunningPipeline?: boolean;
   hasSelectedJob?: boolean;
+  exportBatchUrl?: string;
 }
 
 export function SearchHeader({
@@ -29,6 +30,7 @@ export function SearchHeader({
   onRunSinglePipeline,
   isRunningPipeline = false,
   hasSelectedJob = false,
+  exportBatchUrl,
 }: SearchHeaderProps) {
   return (
     <section className="rounded-2xl border border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] p-5 shadow-sm">
@@ -87,6 +89,18 @@ export function SearchHeader({
               <Sparkles className="size-4 me-1.5" />
               {isRunningPipeline ? 'Analyzing...' : 'Auto-Find Leads'}
             </Button>
+          )}
+
+          {exportBatchUrl && (
+            <a
+              href={exportBatchUrl}
+              download
+              className="inline-flex items-center justify-center h-10 px-3.5 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3] hover:bg-[#EFF2E3] dark:hover:bg-[#202414] transition-colors"
+              title={`Download all completed leads for "${query}" as an Excel spreadsheet`}
+            >
+              <FileSpreadsheet className="size-4 me-1.5 text-[#636B2F]" />
+              Export Keyword (.xlsx)
+            </a>
           )}
         </div>
       </form>

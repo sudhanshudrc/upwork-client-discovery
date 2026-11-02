@@ -356,6 +356,12 @@ async def test_api_export_endpoints(tmp_path: Path):
             # 3. 404 on nonexistent job
             resp_404 = client.get("/api/v1/leads/nonexistent_job_123/export")
             assert resp_404.status_code == 404
+
+            # 4. Download filtered leads export by search query keyword
+            resp_query = client.get("/api/v1/leads/export?query=Full%20Stack&completed_only=true")
+            assert resp_query.status_code == 200
+            assert "spreadsheetml.sheet" in resp_query.headers["content-type"]
+            assert "leads_full_stack.xlsx" in resp_query.headers.get("content-disposition", "")
     finally:
         app.dependency_overrides.clear()
 

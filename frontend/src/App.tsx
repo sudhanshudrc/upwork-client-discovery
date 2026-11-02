@@ -41,7 +41,12 @@ import { useDiscoverLeads } from '@/hooks/use-leads';
 import { useRunSinglePipeline } from '@/hooks/use-pipeline';
 import { useDashboardStats } from '@/hooks/use-dashboard';
 import { useDomains } from '@/hooks/use-domains';
-import type { FeedJobItem, DecisionMakerDiscoveryResponse, SessionStatusResponse } from '@/services/api';
+import {
+  api,
+  type FeedJobItem,
+  type DecisionMakerDiscoveryResponse,
+  type SessionStatusResponse,
+} from '@/services/api';
 
 function cleanBudget(raw?: string | null): string {
   if (!raw) return 'Not specified';
@@ -295,7 +300,7 @@ export function App() {
         job_id: jobId,
         job_uid: selectedJobUid,
         confirmed_client_name: clientName,
-        confirmed_company_name: hitlCompanyName.trim() || selectedJob.intelligence?.confirmed_company_name || '',
+        confirmed_company_name: hitlCompanyName.trim(),
         target_role: hitlRole.trim() || selectedJob.intelligence?.target_role || 'CTO',
         is_agency: intelligence?.is_agency || false,
       },
@@ -481,6 +486,7 @@ export function App() {
           onRunSinglePipeline={handleRunPipeline}
           isRunningPipeline={pipelineMutation.isPending}
           hasSelectedJob={Boolean(selectedJob)}
+          exportBatchUrl={api.getBatchExcelExportUrl(searchQuery, true)}
         />
 
         {/* Search Keyword Domains Pill Bar */}

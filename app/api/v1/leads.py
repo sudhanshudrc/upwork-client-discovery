@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -165,6 +166,8 @@ async def discover_decision_makers(
 
 @router.get("/export")
 async def export_all_leads_excel(
+    query: Optional[str] = Query(None, description="Filter jobs by search keyword or title"),
+    completed_only: bool = Query(True, description="Export only jobs with completed pipeline / discovered candidates"),
     min_spend: Optional[Decimal] = Query(None, description="Filter jobs by minimum client spend in USD"),
     tier: Optional[str] = Query(None, description="Filter by candidate match tier, e.g. 'Tier A'"),
     country: Optional[str] = Query(None, description="Filter by client country"),
@@ -173,19 +176,26 @@ async def export_all_leads_excel(
 ):
     """
     Exports a sales-ready Master 46-Column Excel Workbook (.xlsx) across all analyzed leads
-    with optional filtering by spend, tier, and country.
+    with optional filtering by search keyword, completion status, spend, tier, and country.
     """
     file_path = await excel_export_service.export_from_db(
         session=db,
+        query=query,
+        completed_only=completed_only,
         min_spend=min_spend,
         tier=tier,
         country=country,
         only_primary=only_primary,
     )
 
+    filename = "leads_decision_makers.xlsx"
+    if query and query.strip():
+        safe_q = re.sub(r"[^a-zA-Z0-9_-]", "_", query.strip().lower())
+        filename = f"leads_{safe_q}.xlsx"
+
     return FileResponse(
         path=str(file_path),
-        filename="leads_decision_makers.xlsx",
+        filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 

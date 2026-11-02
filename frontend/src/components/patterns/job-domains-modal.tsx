@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Compass, Clock, CheckCircle2, AlertCircle, Layers, ArrowRight } from 'lucide-react';
+import { Compass, Clock, CheckCircle2, AlertCircle, Layers, ArrowRight, FileSpreadsheet } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -132,21 +132,33 @@ export function JobDomainsModal({
                     </div>
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={loadingQuery === domain.query}
-                    onClick={() => handleLoadJobs(domain)}
-                    className="text-xs h-8 px-3 shrink-0 self-end sm:self-center"
-                  >
-                    {loadingQuery === domain.query ? (
-                      'Loading...'
-                    ) : (
-                      <>
-                        Load Extracted Jobs <ArrowRight className="size-3 ms-1" />
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <a
+                      href={api.getBatchExcelExportUrl(domain.query, true)}
+                      download
+                      className="inline-flex items-center justify-center text-xs h-8 px-2.5 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] hover:bg-[#EFF2E3] dark:hover:bg-[#202414] transition-colors"
+                      title={`Export all completed leads for "${domain.query}"`}
+                    >
+                      <FileSpreadsheet className="size-3.5 me-1 text-[#636B2F]" />
+                      Export (.xlsx)
+                    </a>
+
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={loadingQuery === domain.query}
+                      onClick={() => handleLoadJobs(domain)}
+                      className="text-xs h-8 px-3"
+                    >
+                      {loadingQuery === domain.query ? (
+                        'Loading...'
+                      ) : (
+                        <>
+                          Load Extracted Jobs <ArrowRight className="size-3 ms-1" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               );
             })

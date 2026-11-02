@@ -91,5 +91,18 @@ test('Lead Intelligence Frontend Verification Suite', async (t) => {
     const endpoint = `/api/v1/jobs/domains/${encodeURIComponent(query)}/jobs`;
     assert.equal(endpoint, '/api/v1/jobs/domains/AI%20%26%20Machine%20Learning/jobs');
   });
+
+  await t.test('Batch Excel export URL builder produces expected keyword query parameters', () => {
+    function getBatchExcelExportUrl(query, completedOnly = true) {
+      const params = new URLSearchParams();
+      if (query && query.trim()) params.set('query', query.trim());
+      if (completedOnly) params.set('completed_only', 'true');
+      const qs = params.toString();
+      return `/api/v1/leads/export${qs ? `?${qs}` : ''}`;
+    }
+
+    const url = getBatchExcelExportUrl('Frontend Developer', true);
+    assert.equal(url, '/api/v1/leads/export?query=Frontend+Developer&completed_only=true');
+  });
 });
 
