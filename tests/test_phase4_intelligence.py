@@ -128,3 +128,65 @@ async def test_human_in_the_loop_workflow():
         assert confirmed_record.confirmed_company_name == "Tilt"
         assert confirmed_record.target_role == "CTO"
 
+
+def test_extract_multiple_client_names_in_review():
+    """Verify NLP extraction discovers multiple client names (e.g. Rupesh and Nagesh) from collaboration feedback."""
+    service = UpworkNLPService()
+    contracts = [
+        {
+            "contract_index": 1,
+            "freelancer_name": "Dev User",
+            "freelancer_review_clean": "Many thanks for the contract. It was a great working experience with Rupesh Sir and Nagesh Sir.",
+        }
+    ]
+    candidates = service.extract_client_names(contracts)
+    candidate_names = [c.name for c in candidates]
+
+    assert "Rupesh" in candidate_names
+    assert "Nagesh" in candidate_names
+    assert contracts[0]["client_name_mined"] == "Nagesh, Rupesh"
+
+
+def test_extract_international_and_vocative_client_names():
+    """Verify extraction handles vocatives, abbreviations, attached 'more' strings, and non-Western names."""
+    service = UpworkNLPService()
+    contracts = [
+        {"contract_index": 1, "freelancer_review_clean": "Thank you, Zarina! I really enjoyed working with you."},
+        {"contract_index": 2, "freelancer_review_clean": "Thanks, Zarina Nazish! It was a pleasure working with you."},
+        {"contract_index": 3, "freelancer_review_clean": "Tks Ahmed...."},
+        {"contract_index": 4, "freelancer_review_clean": "As always, great to work with Shahzadmore"},
+        {"contract_index": 5, "freelancer_review_clean": "Mr. Soc was an excellent manager that I worked on and came well-prepared."},
+    ]
+    candidates = service.extract_client_names(contracts)
+    candidate_names = {c.name for c in candidates}
+
+    assert "Zarina" in candidate_names
+    assert "Zarina Nazish" in candidate_names
+    assert "Ahmed" in candidate_names
+    assert "Shahzad" in candidate_names
+    assert "Soc" in candidate_names
+
+
+@pytest.mark.anyio
+async def test_multi_client_names_in_intelligence_response():
+    """Verify analyze_job_intelligence returns a list of names when multiple decision makers are present."""
+    contracts = [
+        {
+            "contract_index": 1,
+            "freelancer_review_clean": "It was a great working experience with Rupesh Sir and Nagesh Sir.",
+        }
+    ]
+    result = await nlp_service.analyze_job_intelligence(
+        job_id="00000000-0000-0000-0000-000000000001",
+        job_uid="test_uid_multi",
+        job_description="Seeking a backend engineer.",
+        contracts=contracts,
+        session=None,
+    )
+    assert len(result.suggested_client_names) >= 2
+    assert "Rupesh" in result.suggested_client_names
+    assert "Nagesh" in result.suggested_client_names
+    assert "Rupesh" in result.suggested_client_name
+    assert "Nagesh" in result.suggested_client_name
+
+

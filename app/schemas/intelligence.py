@@ -20,8 +20,9 @@ class IntelligenceExtractionResponse(BaseModel):
 
     job_id: uuid.UUID
     job_uid: str
-    suggested_client_name: Optional[str]
-    suggested_company_name: Optional[str]
+    suggested_client_name: Optional[str] = None
+    suggested_client_names: List[str] = Field(default_factory=list)
+    suggested_company_name: Optional[str] = None
     suggested_role: str = "CTO"
     client_name_candidates: List[DiscoveredEntityItem] = Field(default_factory=list)
     company_candidates: List[DiscoveredEntityItem] = Field(default_factory=list)
@@ -45,6 +46,7 @@ class ClientIntelligenceResponse(BaseModel):
     id: uuid.UUID
     job_id: uuid.UUID
     confirmed_client_name: str
+    confirmed_client_names: List[str] = Field(default_factory=list)
     confirmed_company_name: Optional[str]
     target_role: str
     name_confidence: Decimal

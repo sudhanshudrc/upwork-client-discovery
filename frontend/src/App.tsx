@@ -128,7 +128,11 @@ export function App() {
   // Sync HITL fields when intelligence data loads
   React.useEffect(() => {
     if (intelligence) {
-      if (intelligence.suggested_client_name) setHitlClientName(intelligence.suggested_client_name);
+      const defaultName =
+        intelligence.suggested_client_names?.[0] ||
+        intelligence.suggested_client_name?.split(',')[0]?.trim() ||
+        '';
+      if (defaultName) setHitlClientName(defaultName);
       if (intelligence.suggested_company_name) setHitlCompanyName(intelligence.suggested_company_name);
       if (intelligence.suggested_role) setHitlRole(intelligence.suggested_role);
     }
@@ -223,6 +227,43 @@ export function App() {
     if (!uid) return;
     setErrorMessage(null);
     setActiveTab('candidates'); // Instantly navigate user to Decision-Makers tab
+
+    // If user selected or edited client details, ensure confirmation syncs before lead discovery
+    if (selectedJob?.id && hitlClientName.trim()) {
+      confirmMutation.mutate(
+        {
+          job_id: selectedJob.id,
+          job_uid: uid,
+          confirmed_client_name: hitlClientName.trim(),
+          confirmed_company_name: hitlCompanyName.trim(),
+          target_role: hitlRole.trim() || 'CTO',
+          is_agency: intelligence?.is_agency || false,
+        },
+        {
+          onSuccess: () => {
+            discoverMutation.mutate(uid, {
+              onSuccess: (leads) => {
+                setDiscoveryResult(leads);
+                queryClient.invalidateQueries({ queryKey: ['job-details', uid] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard-clients'] });
+              },
+              onError: (err) => {
+                setErrorMessage(err.message || 'Lead discovery failed');
+              },
+            });
+          },
+          onError: () => {
+            discoverMutation.mutate(uid, {
+              onSuccess: (leads) => {
+                setDiscoveryResult(leads);
+              },
+            });
+          },
+        }
+      );
+      return;
+    }
 
     discoverMutation.mutate(uid, {
       onSuccess: (leads) => {
@@ -517,9 +558,9 @@ export function App() {
                           </Badge>
                         )}
 
-                        {(selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name) && (
+                        {(hitlClientName || selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name) && (
                           <Badge variant="brand" className="text-[10px]">
-                            Client: {selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name}
+                            Client: {hitlClientName || selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name}
                           </Badge>
                         )}
 
@@ -620,6 +661,12 @@ export function App() {
                               ? `${selectedJob.client.city}, ${selectedJob.client.country}`
                               : selectedJob.client?.country || currentFeedJob?.client_location || currentFeedJob?.client_location_snippet || null
                           }
+                          selectedClientName={hitlClientName}
+                          onSelectClientName={(name) => setHitlClientName(name)}
+                          selectedCompanyName={hitlCompanyName}
+                          onSelectCompanyName={(comp) => setHitlCompanyName(comp)}
+                          selectedRole={hitlRole}
+                          onSelectRole={(role) => setHitlRole(role)}
                           onOpenReviewDialog={handleOpenHitl}
                           onDiscoverLeads={() => handleDirectDiscover(selectedJob.job_uid)}
                           isDiscovering={confirmMutation.isPending || discoverMutation.isPending}

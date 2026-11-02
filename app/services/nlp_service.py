@@ -52,22 +52,34 @@ AGENCY_PATTERNS = [
     r"\boutsource\b",
 ]
 
-NAME_REGEX = re.compile(
-    r"(?:work(?:ing|ed)?\s+with|pleasure\s+with)\s+(?:Mr\.\s*)?(?!(?:this|that|these|those|the|a|an|such|our|their|his|her|my|your|him|them|someone|everyone|anyone|no\s*one|all|both|each|every|another|other|group|team)\b)([A-Z][a-z]+)|"
-    r"(?:^|\.\s+)(?:Mr\.\s*)?(?!(?:It|This|That|These|Those|He|She|They|There|We|The)\b)([A-Z][a-z]+)\s+(?:is|was)\s+(?:a|an|the|such|our|great|excellent)|"
-    r"(?:thanks\s+to|thank\s+you)\s+([A-Z][a-z]+)",
+HONORIFICS_REGEX = re.compile(
+    r"^(?:mr\.|mr|mrs\.|mrs|ms\.|ms|dr\.|dr)\s+|\s+(?:sir|madam)$",
     re.IGNORECASE,
 )
 
+GREETINGS_PREFIX_REGEX = re.compile(
+    r"^(?:thanks|thank\s+you|tks|thx|thnx)\s*(?:to\s*|,\s*|\s+)",
+    re.IGNORECASE,
+)
+
+CORPORATE_SUFFIXES = {
+    "technologies", "technology", "solutions", "software", "agency", "inc", "llc",
+    "corp", "corporation", "ltd", "limited", "studio", "group", "labs", "team",
+    "services", "appsync", "lambda", "gateway", "store", "stores",
+}
+
 NAME_STOPWORDS = {
     "the", "a", "an", "this", "that", "these", "those",
-    "client", "freelancer", "work", "job", "team", "group", "company", "agency", "crew", "organization", "folks", "people", "guys", "experts",
+    "client", "clients", "freelancer", "freelancers", "work", "job", "team", "group", "company", "agency", "crew", "organization", "folks", "people", "guys", "experts",
     "you", "him", "her", "them", "me", "us", "he", "she", "they", "we", "i", "it",
-    "for", "with", "from", "to", "at", "by", "in", "on", "of",
+    "for", "with", "from", "to", "at", "by", "in", "on", "of", "and", "or", "so",
     "great", "good", "nice", "working", "all", "very", "excellent", "project", "our", "my", "their", "his", "your",
-    "best", "mr", "mrs", "ms", "dr", "russian", "english", "spanish", "german", "french",
+    "best", "mr", "mrs", "ms", "dr", "sir", "madam", "russian", "english", "spanish", "german", "french",
     "someone", "everyone", "anyone", "nobody", "noone", "something", "everything", "nothing",
-    "another", "other", "some", "any", "each", "every", "both", "many", "much", "more", "most", "several", "few", "one", "two", "such"
+    "another", "other", "some", "any", "each", "every", "both", "many", "much", "more", "most", "several", "few", "one", "two", "such",
+    "audit", "again", "designer", "graphic", "store", "experience", "communication", "clear", "responsiveness", "lots", "unrelated", "support",
+    "looking", "forward", "look", "regards", "sincerely", "cheers", "always", "hope", "future", "opportunity",
+    "assignment", "assignments", "projects", "highly", "recommend", "recommended", "glad", "loved", "enjoyed", "appreciated",
 }
 
 
@@ -77,16 +89,40 @@ class UpworkNLPService:
     def __init__(self):
         self.nlp = nlp
 
+    def clean_name(self, raw: str) -> str:
+        """Cleans honorifics, greeting prefixes, and attached more/less pagination strings."""
+        if not raw:
+            return ""
+        cleaned = GREETINGS_PREFIX_REGEX.sub("", raw.strip()).strip()
+        cleaned = HONORIFICS_REGEX.sub("", cleaned).strip()
+        cleaned = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = cleaned.strip(" .,;:!?-\"'`")
+        return cleaned.title()
+
     def is_valid_person_name(self, name: Optional[str]) -> bool:
-        """Validates that candidate is a genuine proper noun person name and not a pronoun/determiner."""
-        if not name or len(name) < 3:
+        """Validates that candidate is a genuine proper noun person name and not a pronoun/determiner/common stopword."""
+        if not name or len(name) < 2 or len(name) > 40:
             return False
-        clean = name.strip()
-        if clean.lower() in NAME_STOPWORDS:
+        clean = self.clean_name(name)
+        if not clean or len(clean) < 2:
             return False
-        doc = self.nlp(clean)
-        for token in doc:
-            if token.pos_ in ("DET", "PRON", "ADP", "CCONJ", "SCONJ", "AUX", "VERB", "ADV", "PUNCT", "SPACE"):
+        lower = clean.lower()
+        if lower in NAME_STOPWORDS or lower in TECH_STOPWORDS or lower in ROLE_STOPWORDS:
+            return False
+        words = lower.split()
+        if len(words) > 3:
+            return False
+        for w in words:
+            if w in NAME_STOPWORDS or w in ROLE_STOPWORDS or w in CORPORATE_SUFFIXES or w in TECH_STOPWORDS:
+                return False
+            # Check characters: must be strictly alphabetic with standard accents/hyphens/apostrophes
+            if not re.match(r"^[A-Za-z\-']+$", w):
+                return False
+        # Test in a carrier sentence so spaCy disambiguates against pronouns/determiners/prepositions
+        carrier_doc = self.nlp(f"I worked with {clean}.")
+        carrier_tokens = [t for t in carrier_doc if t.i >= 3 and t.text != "."]
+        for t in carrier_tokens:
+            if t.pos_ in ("DET", "PRON", "ADP", "CCONJ", "SCONJ", "AUX", "VERB", "ADV"):
                 return False
         return True
 
@@ -97,47 +133,106 @@ class UpworkNLPService:
         """
         Analyzes partitioned review text strictly prior to 'To freelancer:'
         using both linguistic regex anchors and spaCy NER dependency trees.
+        Extracts single or multiple personal client names mentioned in feedback.
         """
         name_stats: Dict[str, Dict[str, Any]] = {}
 
         for c in contracts:
             review = c.get("freelancer_review_clean") or c.get("review")
-            if not review or len(review) < 10:
+            if not review or len(review) < 5:
                 c["client_name_mined"] = None
                 continue
 
-            freelancer_name = c.get("freelancer_name", "")
-            found_names_in_review = set()
-            mined_name = None
+            # Strip trailing more/less artifacts from review text
+            rev_clean = re.sub(r"(?<=[a-zA-Z])(more|less)\b", "", review, flags=re.IGNORECASE)
+            rev_clean = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", rev_clean, flags=re.IGNORECASE)
 
-            # 1. Regex linguistic anchors
-            m = NAME_REGEX.search(review)
-            if m:
-                cand = next((g for g in m.groups() if g), None)
-                if cand and self.is_valid_person_name(cand):
+            freelancer_name = c.get("freelancer_name", "") or ""
+            found_names_in_review = set()
+
+            # 1. Regex linguistic pattern extraction
+            # Pattern A: Multi-person collaboration (handles 'with X and Y', 'experience with X and Y', etc.)
+            collab_matches = re.findall(
+                r"(?:work(?:ing|ed)?\s+with|experience\s+with|pleasure\s+(?:working\s+)?with)\s+([A-Za-z\s,\-&.]+?)(?:[.;!\n]|\bfor\b|\bwho\b|\bon\b|\bas\b|$)",
+                rev_clean,
+                re.IGNORECASE,
+            )
+            for m in collab_matches:
+                for s in re.split(r"\s+(?:and|&)\s+|,\s*", m):
+                    cand = self.clean_name(s)
+                    if self.is_valid_person_name(cand):
+                        if not freelancer_name or cand.lower() not in freelancer_name.lower():
+                            found_names_in_review.add((cand, "linguistic_review_regex"))
+
+            # Pattern B: Thanks / Greetings (e.g. 'Thanks [Name]', 'Thank you, [Name]', 'Tks [Name]')
+            thanks_matches = re.findall(
+                r"(?:thanks|thank\s+you|tks|thx|thnx)\s*(?:to\s*|,\s*|\s+)([A-Za-z\s,\-&.]+?)(?:[.;!\n]|\bfor\b|\bwho\b|\bI\b|$)",
+                rev_clean,
+                re.IGNORECASE,
+            )
+            for m in thanks_matches:
+                for s in re.split(r"\s+(?:and|&)\s+|,\s*", m):
+                    cand = self.clean_name(s)
+                    if self.is_valid_person_name(cand):
+                        if not freelancer_name or cand.lower() not in freelancer_name.lower():
+                            found_names_in_review.add((cand, "linguistic_review_regex"))
+
+            # Pattern C: Subject start / predication (e.g. '[Name] was great', '[Name] is very understanding')
+            subj_matches = re.findall(
+                r"(?:^|[.!?\n]\s*)(?:Mr\.\s*|Dr\.\s*)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:is|was|has|gave|provided|communicated)\s+(?:a|an|the|such|our|very|always|extremely|super|great|excellent|supportive|responsive|helpful|wonderful|clear)",
+                rev_clean,
+                re.IGNORECASE,
+            )
+            for m in subj_matches:
+                cand = self.clean_name(m)
+                if self.is_valid_person_name(cand):
                     if not freelancer_name or cand.lower() not in freelancer_name.lower():
-                        mined_name = cand.title()
-                        found_names_in_review.add((mined_name, "linguistic_review_regex"))
+                        found_names_in_review.add((cand, "linguistic_review_regex"))
+
+            # Pattern D: Recommendations ('recommend working with [Name]', 'loved working with [Name]')
+            rec_matches = re.findall(
+                r"(?:recommend|loved)\s+working\s+with\s+([A-Za-z\s,\-&.]+?)(?:[.;!\n]|\bfor\b|\bwho\b|$)",
+                rev_clean,
+                re.IGNORECASE,
+            )
+            for m in rec_matches:
+                for s in re.split(r"\s+(?:and|&)\s+|,\s*", m):
+                    cand = self.clean_name(s)
+                    if self.is_valid_person_name(cand):
+                        if not freelancer_name or cand.lower() not in freelancer_name.lower():
+                            found_names_in_review.add((cand, "linguistic_review_regex"))
 
             # 2. spaCy NER & Dependency Tree
-            doc = self.nlp(review)
+            doc = self.nlp(rev_clean)
+            valid_dep_roles = ("nsubj", "nsubjpass", "pobj", "dobj", "npadvmod", "appos", "compound", "ROOT", "conj")
+
             for ent in doc.ents:
+                clean_ent = self.clean_name(ent.text)
+                if not self.is_valid_person_name(clean_ent):
+                    continue
+                if freelancer_name and (clean_ent.lower() in freelancer_name.lower() or freelancer_name.lower() in clean_ent.lower()):
+                    continue
+
+                dep_role = ent.root.dep_
+
                 if ent.label_ in ("PERSON", "NORP"):
-                    name = ent.text.strip().title()
-                    if not self.is_valid_person_name(name):
-                        continue
-                    if freelancer_name and (name.lower() in freelancer_name.lower() or freelancer_name.lower() in name.lower()):
-                        continue
+                    if dep_role in valid_dep_roles:
+                        found_names_in_review.add((clean_ent, "spacy_ner_dependency"))
+                elif ent.label_ == "ORG":
+                    # Check if syntactically positioned as a person rather than an organization
+                    if dep_role in valid_dep_roles:
+                        head_text = ent.root.head.text.lower()
+                        prev_tokens = [t.text.lower() for t in doc if t.i < ent.start][-3:]
+                        if (
+                            any(p in prev_tokens for p in ("with", "thanks", "thank", "tks", "thx"))
+                            or head_text in ("with", "was", "is", "worked", "working", "sir", "madam", "manager")
+                            or dep_role in ("npadvmod", "appos")
+                        ):
+                            found_names_in_review.add((clean_ent, "spacy_ner_dependency"))
 
-                    # Check dependency tree
-                    dep_role = ent.root.dep_
-                    if dep_role in ("nsubj", "nsubjpass", "pobj", "dobj"):
-                        if not mined_name:
-                            mined_name = name
-                        found_names_in_review.add((name, "spacy_ner_dependency"))
-
-            # Tag mined name on contract dictionary directly in NLP service
-            c["client_name_mined"] = mined_name
+            # Tag mined names on contract dictionary directly in NLP service
+            mined_names = sorted({name for name, _ in found_names_in_review})
+            c["client_name_mined"] = ", ".join(mined_names) if mined_names else None
 
             # Record stats
             for name, source in found_names_in_review:
@@ -268,9 +363,30 @@ class UpworkNLPService:
         Runs full intelligence pipeline: client name extraction, org extraction,
         agency detection, snapshot persistence, and database upsert.
         """
-        # 1. Extract Client Names
+        # 1. Extract Client Names (supports single or multiple top decision makers)
         client_names = self.extract_client_names(contracts)
-        suggested_client = client_names[0].name if client_names else None
+
+        # Select top decision makers:
+        # Include top candidate, plus additional candidates if they have strong mentions or multi-client parity
+        suggested_client_names: List[str] = []
+        if client_names:
+            top_cand = client_names[0]
+            suggested_client_names.append(top_cand.name)
+            for c in client_names[1:]:
+                if len(suggested_client_names) >= 3:
+                    break
+                if top_cand.mention_count >= 3:
+                    if c.mention_count >= max(2, int(top_cand.mention_count * 0.35)):
+                        suggested_client_names.append(c.name)
+                else:
+                    if c.confidence >= Decimal("70.00"):
+                        suggested_client_names.append(c.name)
+
+        suggested_client = (
+            suggested_client_names[0]
+            if len(suggested_client_names) == 1
+            else (", ".join(suggested_client_names) if suggested_client_names else None)
+        )
         top_name_conf = (
             Decimal(str(client_names[0].confidence))
             if client_names
@@ -279,7 +395,7 @@ class UpworkNLPService:
         top_name_mentions = client_names[0].mention_count if client_names else 0
         top_name_evidence = client_names[0].supporting_context if client_names else None
         logger.info(
-            f"[NLP] Person mining: {len(client_names)} candidate(s) found. Top candidate: '{suggested_client}' "
+            f"[NLP] Person mining: {len(client_names)} candidate(s) found. Top candidate(s): {suggested_client_names} "
             f"(Confidence: {top_name_conf}%, Mentions: {top_name_mentions})"
         )
 
@@ -309,6 +425,7 @@ class UpworkNLPService:
             job_id=job_id,
             job_uid=job_uid,
             suggested_client_name=suggested_client,
+            suggested_client_names=suggested_client_names,
             suggested_company_name=suggested_company,
             suggested_role="CTO",
             client_name_candidates=client_names,

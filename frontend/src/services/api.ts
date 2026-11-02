@@ -166,6 +166,7 @@ export interface ConfirmedIntelligence {
   id: string;
   job_id: string;
   confirmed_client_name: string | null;
+  confirmed_client_names?: string[];
   confirmed_company_name: string | null;
   target_role: string | null;
   name_confidence: string | null;
@@ -213,6 +214,7 @@ export interface IntelligenceMiningResponse {
   job_id: string;
   job_uid: string;
   suggested_client_name: string | null;
+  suggested_client_names?: string[];
   suggested_company_name: string | null;
   suggested_role: string | null;
   client_name_candidates: EntityCandidate[];

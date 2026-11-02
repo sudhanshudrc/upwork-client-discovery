@@ -115,6 +115,7 @@ class BatchPipelineRunner:
 
             # Step 4: Client name resolution & Auto-Confirmation
             client_name = "Client"
+            target_names = []
             company_name = None
             if auto_confirm and intel_res.suggested_client_name:
                 top_name = intel_res.suggested_client_name
@@ -127,35 +128,48 @@ class BatchPipelineRunner:
                 )
                 await nlp_service.confirm_intelligence(confirm_req, session)
                 client_name = top_name
+                target_names = intel_res.suggested_client_names or [n.strip() for n in top_name.split(",") if n.strip()]
                 company_name = top_comp
-                logger.info(f"[STEP 4/5] Auto-confirmed target decision maker: '{client_name}' (Company: '{company_name}')")
+                logger.info(f"[STEP 4/5] Auto-confirmed target decision maker(s): {target_names} (Company: '{company_name}')")
             elif db_job.intelligence and db_job.intelligence.confirmed_client_name:
                 client_name = db_job.intelligence.confirmed_client_name
+                target_names = db_job.intelligence.confirmed_client_names or [n.strip() for n in client_name.split(",") if n.strip()]
                 company_name = db_job.intelligence.confirmed_company_name
-                logger.info(f"[STEP 4/5] Using previously confirmed target: '{client_name}'")
+                logger.info(f"[STEP 4/5] Using previously confirmed target(s): {target_names}")
             else:
+                target_names = ["Client"]
                 logger.warning("[STEP 4/5] No confident client name detected; using fallback target.")
 
             city = db_job.client.city if db_job.client else None
             country = db_job.client.country if db_job.client else None
+            target_role = getattr(db_job.intelligence, "target_role", "CTO") if db_job.intelligence else "CTO"
 
-            # Step 5: LinkedIn Harvesting via SerpAPI Google X-Ray
-            logger.info(f"[STEP 5/5] Harvesting LinkedIn profiles via Google X-Ray for '{client_name}' in {city}, {country} (Company: {company_name})...")
-            raw_candidates = harvester_service.harvest_candidates(
-                name=client_name,
-                city=city,
-                country=country,
-                company=company_name,
-            )
-            logger.info(f"[STEP 5/5] Google X-Ray harvested {len(raw_candidates)} raw candidate profile(s).")
+            # Step 5: LinkedIn Harvesting via SerpAPI Google X-Ray for all target names
+            logger.info(f"[STEP 5/5] Harvesting LinkedIn profiles via Google X-Ray for target(s) {target_names} in {city}, {country} (Company: {company_name})...")
+            raw_candidates = []
+            seen_profile_urls = set()
+            for t_name in target_names:
+                harvested = harvester_service.harvest_candidates(
+                    name=t_name,
+                    city=city,
+                    country=country,
+                    company=company_name,
+                )
+                for c in harvested:
+                    if c.profile_url not in seen_profile_urls:
+                        seen_profile_urls.add(c.profile_url)
+                        raw_candidates.append(c)
+
+            logger.info(f"[STEP 5/5] Google X-Ray harvested {len(raw_candidates)} total candidate profile(s) across target(s) {target_names}.")
 
             # Step 6: 4-Factor Composite Scoring
             logger.info("[SCORING] Executing 4-Factor Composite Scoring (Name 40%, Geo 35%, Role 15%, Company 10%)...")
             target = LeadTarget(
-                name=client_name,
+                name=target_names[0] if target_names else client_name,
                 city=city,
                 country=country,
                 company_hint=company_name,
+                target_role=target_role,
                 domain_keywords=[
                     s.strip() for s in (db_job.skills_tags or "").split(",") if s.strip()
                 ],
@@ -191,7 +205,8 @@ class BatchPipelineRunner:
                 "job_uid": db_job.job_uid,
                 "job_title": db_job.title,
                 "job_url": db_job.job_url,
-                "client_name": client_name,
+                "client_name": target_names[0] if (target_names and len(target_names) == 1) else client_name,
+                "client_names": target_names,
                 "company_name": company_name,
                 "total_contracts": len(contracts),
                 "total_candidates": len(scored_candidates),

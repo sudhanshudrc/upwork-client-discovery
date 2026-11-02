@@ -59,6 +59,13 @@ class ClientIntelligence(Base):
     # Relationship
     job: Mapped["Job"] = relationship("Job", back_populates="intelligence")
 
+    @property
+    def confirmed_client_names(self) -> list[str]:
+        """Returns the confirmed client names as a list."""
+        if not self.confirmed_client_name:
+            return []
+        return [n.strip() for n in self.confirmed_client_name.split(",") if n.strip()]
+
     __table_args__ = (
         Index("idx_intel_job", "job_id"),
         Index("idx_intel_client_name", "confirmed_client_name"),

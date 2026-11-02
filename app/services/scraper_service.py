@@ -295,7 +295,11 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
         is_in_progress = bool(past_date and "present" in past_date.lower())
 
         # STRICT PARTITIONING RULE
-        card_text = job_card.text(strip=True)
+        # Clean inline truncation toggles before reading text
+        for btn in job_card.css(".air3-truncation-btn, [data-ev-label='truncation_toggle']"):
+            btn.decompose()
+
+        card_text = job_card.text(separator=" ", strip=True)
         excluded_praise = None
         if "To freelancer:" in card_text:
             parts = card_text.split("To freelancer:", 1)
@@ -310,10 +314,13 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
         else:
             trunc_el = job_card.css_first("span.air3-truncation.ml-1x")
             if trunc_el:
-                t = re.sub(r"\b(more|less)\b$", "", trunc_el.text(strip=True)).strip()
+                t = trunc_el.text(separator=" ", strip=True)
+                t = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", t, flags=re.IGNORECASE)
+                t = re.sub(r"\b(more|less)\b$", "", t, flags=re.IGNORECASE).strip()
                 clean_review = t if t and t.lower() != "no feedback given" else None
             else:
                 clean = re.sub(r"Rating is [0-9.]+ out of [0-9.]+\s*[0-9.]*\s*(stars)?", "", freelancer_review_raw).strip()
+                clean = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", clean, flags=re.IGNORECASE)
                 clean = re.sub(r"\b(more|less)\b", "", clean).strip()
                 clean_review = clean if clean and len(clean) > 5 and clean.lower() != "no feedback given" else None
 
@@ -595,6 +602,15 @@ class UpworkScraperService:
                 await asyncio.sleep(2)
 
                 if expand_all_history:
+                    # Scroll down to ensure client history component triggers lazy load
+                    try:
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                        await asyncio.sleep(1.0)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(1.5)
+                    except Exception as e:
+                        logger.debug(f"[SCRAPER] Scroll trigger encountered: {e}")
+
                     # Click Jobs in progress
                     try:
                         in_prog = await page.query_selector("[data-cy='jobs-in-progress-button']")
