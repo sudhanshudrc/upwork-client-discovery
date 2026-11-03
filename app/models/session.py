@@ -76,4 +76,20 @@ async def init_db() -> None:
                     "CREATE INDEX IF NOT EXISTS idx_search_runs_query_created ON search_runs (search_query, created_at);"
                 )
             )
+            await conn.execute(
+                text(
+                    "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);"
+                )
+            )
+            # Remove any existing session cookies for requested test resets
+            await conn.execute(
+                text(
+                    "DELETE FROM user_sessions WHERE user_identifier = 'sudhanshushekarkumar@gmail.com' OR user_id IN (SELECT id FROM users WHERE email = 'sudhanshushekarkumar@gmail.com');"
+                )
+            )
 

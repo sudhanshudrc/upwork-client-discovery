@@ -10,9 +10,9 @@ export function Card({ className, elevated = false, ...props }: CardProps) {
     <div
       data-slot="card"
       className={cn(
-        'rounded-xl border border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] text-[#3D4127] dark:text-[#F8F9F3] transition-all duration-150',
+        'rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 transition-all duration-150',
         elevated
-          ? 'shadow-[var(--shadow-elevated)] border-[#BAC095]'
+          ? 'shadow-[var(--shadow-elevated)] border-slate-300 dark:border-slate-700'
           : 'shadow-[var(--shadow-card)]',
         className
       )}
@@ -42,7 +42,7 @@ export function CardTitle({
     <h3
       data-slot="card-title"
       className={cn(
-        'text-base font-semibold text-[#3D4127] dark:text-[#F8F9F3] tracking-tight leading-snug',
+        'text-base font-semibold text-slate-900 dark:text-slate-50 tracking-tight leading-snug',
         className
       )}
       {...props}
@@ -57,7 +57,7 @@ export function CardDescription({
   return (
     <p
       data-slot="card-description"
-      className={cn('text-xs text-[#656C43] dark:text-[#BAC095] leading-normal', className)}
+      className={cn('text-xs text-slate-500 dark:text-slate-400 leading-normal', className)}
       {...props}
     />
   );
@@ -70,7 +70,7 @@ export function CardContent({
   return (
     <div
       data-slot="card-content"
-      className={cn('p-5 pt-0 text-sm leading-normal', className)}
+      className={cn('p-5 pt-0', className)}
       {...props}
     />
   );
@@ -83,12 +83,8 @@ export function CardFooter({
   return (
     <div
       data-slot="card-footer"
-      className={cn(
-        'flex items-center p-5 pt-0 border-t border-[#F3F7F5] mt-4',
-        className
-      )}
+      className={cn('flex items-center p-5 pt-0', className)}
       {...props}
     />
   );
 }
-

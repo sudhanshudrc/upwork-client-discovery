@@ -109,6 +109,28 @@ def parse_client_location(loc_el) -> Dict[str, Optional[str]]:
     }
 
 
+def extract_hours_and_duration(raw_dur: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Separates hours per week commitment from calendar duration string."""
+    if not raw_dur:
+        return None, None
+    hours = None
+    dur = raw_dur
+    m = re.search(
+        r"((?:less than|more than|\d+\+?|\d+-\d+)?\s*(?:hrs/week|hrs/wk|hours/week|hours per week|hrs))",
+        raw_dur,
+        re.IGNORECASE,
+    )
+    if m:
+        hours = m.group(1).strip()
+        dur = re.sub(re.escape(m.group(0)), "", raw_dur).strip(" ,•-")
+        if not dur:
+            dur = None
+    elif "not sure" in raw_dur.lower():
+        hours = "Not Sure"
+        dur = None
+    return hours, dur
+
+
 def parse_search_feed_html(html: str) -> List[Dict[str, Any]]:
     """Parses Upwork search feed HTML into structured job summaries."""
     tree = LexborHTMLParser(html)
@@ -153,6 +175,27 @@ def parse_search_feed_html(html: str) -> List[Dict[str, Any]]:
         pay_el = art.css_first("[data-test='payment-verification-status'], [data-test='payment-verified']")
         is_verified = bool(pay_el and "verified" in pay_el.text().lower()) if pay_el else True
 
+        pub_el = art.css_first("[data-test='job-pubilshed-date'], small.text-light")
+        posted_time = clean_text(pub_el.text()) if pub_el else None
+
+        dur_el = art.css_first("[data-test='duration-label'], [data-test='duration']")
+        raw_dur = clean_text(dur_el.text()) if dur_el else None
+        hours_per_week_str, duration_str = extract_hours_and_duration(raw_dur)
+
+        rating_el = art.css_first("[data-test='client-rating'], .air3-rating-value, [data-qa='client-rating']")
+        rating_str = clean_text(rating_el.text()) if rating_el else None
+
+        connects_el = art.css_first("[data-test='connects-cost'], [data-qa='connects-cost']")
+        connects_str = clean_text(connects_el.text()) if connects_el else None
+
+        # Extract skills and tags
+        raw_tokens = [clean_text(t.text()) for t in art.css("[data-test='token'], .air3-token span") if clean_text(t.text())]
+        seen_tokens = set()
+        skills_list = [t for t in raw_tokens if not (t in seen_tokens or seen_tokens.add(t))]
+
+        # Badges
+        badges_list = [clean_text(b.text()) for b in art.css(".air3-badge, [data-test='badge']") if clean_text(b.text())]
+
         jobs.append({
             "uid": uid,
             "url": job_url,
@@ -160,13 +203,26 @@ def parse_search_feed_html(html: str) -> List[Dict[str, Any]]:
             "budget": budget_str,
             "experience_level": exp_str,
             "snippet": desc_str,
+            "posted_time": posted_time,
+            "job_type": clean_text(type_el.text()) if type_el else ("Hourly" if "hr" in budget_str.lower() else "Fixed price"),
+            "duration": duration_str,
+            "hours_per_week": hours_per_week_str,
+            "skills": skills_list,
             "client_spent": spent_str,
             "client_spent_snippet": spent_str,
             "client_location": loc_str,
             "client_location_snippet": loc_str,
+            "client_rating": rating_str,
             "location": loc_str,
             "proposals_tier": prop_str or "Less than 5",
             "payment_verified": is_verified,
+            "connects_cost": connects_str,
+            "badges": badges_list,
+            "article_attributes": {
+                "is_premium": art.attributes.get("data-ev-premium"),
+                "position": art.attributes.get("data-ev-position"),
+                "page_number": art.attributes.get("data-ev-page_number"),
+            },
         })
     return jobs
 
@@ -191,28 +247,90 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
     desc_el = tree.css_first("[data-qa='job-description'], .job-description, [data-test='job-description-text'], .break")
     description = clean_text(desc_el.text(separator=" ")) if desc_el else ""
 
-    # Budget & Pay Type
-    price_el = tree.css_first("[data-qa='job-budget'], [data-qa='job-hourly-rate'], [data-test='job-budget']")
-    budget_raw = clean_text(price_el.text()) if price_el else ""
-    is_hourly = "hr" in budget_raw.lower() or "hourly" in budget_raw.lower() or "$" in budget_raw
-    pay_type = "Hourly" if is_hourly else "Fixed-price"
+    # 1. Job Metadata & Features (Budget, Hours/Week, Duration, Experience Level)
+    feature_items = tree.css(
+        "ul.features:not(.text-light-on-muted) li, "
+        "ul.features:not([class*='text-light']) li, "
+        "ul.air3-card-list li, "
+        "[data-qa='job-details-features'] li, "
+        ".cfe-ui-job-details-features li, "
+        "[data-qa='job-details-item']"
+    )
 
+    hours_per_week = None
+    project_duration = None
+    experience_level = None
     budget_min = None
     budget_max = None
-    if "$" in budget_raw:
-        rates = re.findall(r"\$([0-9,]+(?:\.[0-9]+)?)", budget_raw)
-        if len(rates) == 1:
-            budget_max = Decimal(rates[0].replace(",", ""))
-        elif len(rates) >= 2:
-            budget_min = Decimal(rates[0].replace(",", ""))
-            budget_max = Decimal(rates[1].replace(",", ""))
+    pay_type = None
 
-    # Experience & Duration
-    exp_el = tree.css_first("[data-qa='contractor-tier']")
-    experience_level = clean_text(exp_el.text()) if exp_el else "Expert"
+    for item in feature_items:
+        txt = " ".join(item.text().split())
+        lower = txt.lower()
 
-    duration_el = tree.css_first("[data-qa='duration']")
-    project_duration = clean_text(duration_el.text()) if duration_el else None
+        # Hours per week / commitment
+        if any(h in lower for h in ["hrs/week", "hrs/wk", "hours/week", "hours per week"]) or ("hrs" in lower and "week" in lower):
+            m_hpw = re.search(r"((?:more than|less than|not sure|\d+\+?|\d+-\d+)?\s*(?:hrs/week|hrs/wk|hours/week|hours per week|hrs))", txt, re.IGNORECASE)
+            hours_per_week = m_hpw.group(1).strip() if m_hpw else txt.replace("Hourly", "").strip()
+        elif "not surehourly" in lower or lower == "not sure":
+            hours_per_week = "Not Sure"
+
+        # Duration
+        if "duration" in lower or any(d in lower for d in ["1-3 months", "3-6 months", "6+ months", "less than 1 month", "1 to 3 months", "3 to 6 months"]):
+            cleaned_dur = re.sub(r"duration", "", txt, flags=re.IGNORECASE).strip()
+            project_duration = cleaned_dur
+
+        # Experience Level
+        if "experience level" in lower or any(e in lower for e in ["entry level", "intermediate", "expert"]):
+            m_exp = re.search(r"(Entry Level|Intermediate|Expert)", txt, re.IGNORECASE)
+            experience_level = m_exp.group(1).title() if m_exp else txt.replace("Experience Level", "").strip()
+
+        # Budget / Rate in features
+        if "$" in txt and any(p in lower for p in ["hourly", "fixed-price", "fixed price", "/hr", "budget"]):
+            if "hourly" in lower or "/hr" in lower:
+                pay_type = "Hourly"
+            elif "fixed" in lower:
+                pay_type = "Fixed-price"
+            rates = re.findall(r"\$([0-9,]+(?:\.[0-9]+)?)", txt)
+            if len(rates) == 1:
+                val = Decimal(rates[0].replace(",", ""))
+                budget_min = val
+                budget_max = val
+            elif len(rates) >= 2:
+                budget_min = Decimal(rates[0].replace(",", ""))
+                budget_max = Decimal(rates[1].replace(",", ""))
+
+    # Fallbacks for Budget, Pay Type, Exp Level, and Duration if not found in features list
+    if not pay_type or (budget_min is None and budget_max is None):
+        price_el = tree.css_first("[data-qa='job-budget'], [data-qa='job-hourly-rate'], [data-test='job-budget'], [data-test='is-fixed-price'], [data-test='is-hourly']")
+        budget_raw = clean_text(price_el.text()) if price_el else ""
+        if not pay_type:
+            is_hourly = "hr" in budget_raw.lower() or "hourly" in budget_raw.lower() or "$" in budget_raw
+            pay_type = "Hourly" if is_hourly else "Fixed-price"
+        if "$" in budget_raw and (budget_min is None and budget_max is None):
+            rates = re.findall(r"\$([0-9,]+(?:\.[0-9]+)?)", budget_raw)
+            if len(rates) == 1:
+                val = Decimal(rates[0].replace(",", ""))
+                budget_min = val
+                budget_max = val
+            elif len(rates) >= 2:
+                budget_min = Decimal(rates[0].replace(",", ""))
+                budget_max = Decimal(rates[1].replace(",", ""))
+
+    if not experience_level:
+        exp_el = tree.css_first("[data-qa='contractor-tier'], [data-test='experience-level']")
+        experience_level = clean_text(exp_el.text()) if exp_el else "Expert"
+
+    if not project_duration:
+        duration_el = tree.css_first("[data-qa='duration'], [data-test='duration']")
+        raw_dur = clean_text(duration_el.text()) if duration_el else None
+        h_fallback, d_fallback = extract_hours_and_duration(raw_dur)
+        if not hours_per_week and h_fallback:
+            hours_per_week = h_fallback
+        project_duration = d_fallback or raw_dur
+
+    if not pay_type:
+        pay_type = "Hourly"
 
     # Activity & Proposals
     prop_el = tree.css_first("[data-qa='proposals-tier']")
@@ -253,12 +371,38 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
     rate_el = tree.css_first("[data-qa='client-hourly-rate']")
     avg_hourly_rate = parse_currency_amount(clean_text(rate_el.text())) if rate_el else None
 
-    rating_el = tree.css_first(".air3-rating-value-text, .sr-only")
+    # Client/Buyer Rating: Check explicit buyer rating selector, client about container, and sidebar
+    buyer_rating_el = tree.css_first(
+        "[data-testid='buyer-rating'], "
+        ".cfe-ui-job-about-client .air3-rating, "
+        ".sidebar .rating, "
+        "[data-qa='client-rating'], "
+        "[data-test='client-rating']"
+    )
     client_rating = None
-    if rating_el:
-        m = re.search(r"([0-9.]+)", rating_el.text())
-        if m:
-            client_rating = Decimal(m.group(1))
+    if buyer_rating_el:
+        val_el = buyer_rating_el.css_first(".air3-rating-value-text")
+        if val_el and val_el.text().strip():
+            try:
+                client_rating = Decimal(val_el.text().strip())
+            except Exception:
+                pass
+        if client_rating is None:
+            m = re.search(r"Rating is\s+([0-9.]+)", buyer_rating_el.text())
+            if m:
+                try:
+                    client_rating = Decimal(m.group(1))
+                except Exception:
+                    pass
+    if client_rating is None:
+        for el in tree.css("aside, .sidebar, [data-qa='client-spend']"):
+            m = re.search(r"Rating is\s+([0-9.]+)\s+out of", el.text())
+            if m:
+                try:
+                    client_rating = Decimal(m.group(1))
+                    break
+                except Exception:
+                    pass
 
     payment_node = tree.css_first("[data-qa='payment-verification-status']")
     payment_verified = "Verified" in (clean_text(payment_node.text()) if payment_node else "Verified")
@@ -348,6 +492,7 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
         "budget_max_usd": budget_max,
         "experience_level": experience_level,
         "project_duration": project_duration,
+        "hours_per_week": hours_per_week,
         "proposals_tier": proposals_tier,
         "interviewing_count": interviewing,
         "invites_sent_count": invites_sent,
@@ -502,7 +647,31 @@ class UpworkScraperService:
                         "The session cookies may be inactive or expired. Try refreshing cookies or search as guest."
                     )
 
-        # 3. Save Stage 1 Snapshot to Disk
+        # 3. Enrich jobs with existing database client ratings if available
+        if session and jobs:
+            try:
+                from sqlalchemy.orm import selectinload
+                from app.models.job import Job
+                uids = [j["uid"] for j in jobs if j.get("uid")]
+                if uids:
+                    stmt_enrich = select(Job).options(selectinload(Job.client)).where(Job.job_uid.in_(uids))
+                    res_enrich = await session.execute(stmt_enrich)
+                    known_jobs = {k.job_uid: k for k in res_enrich.scalars().all()}
+                    for j in jobs:
+                        kj = known_jobs.get(j.get("uid"))
+                        if kj and kj.client:
+                            c = kj.client
+                            if c.client_rating:
+                                j["client_rating"] = str(c.client_rating)
+                            if c.total_spent_usd and not j.get("client_spent"):
+                                j["client_spent"] = f"${float(c.total_spent_usd):,.0f} spent"
+                            if c.country and not j.get("client_location"):
+                                j["client_location"] = c.country
+                                j["location"] = c.country
+            except Exception as enrich_err:
+                logger.debug(f"[SCRAPER] DB client enrichment notice: {enrich_err}")
+
+        # 4. Save Stage 1 Snapshot to Disk
         payload = {
             "run_id": run_id,
             "query": clean_query,
@@ -602,6 +771,7 @@ class UpworkScraperService:
                 await asyncio.sleep(2)
 
                 if expand_all_history:
+                    logger.info(f"[CLIENT HISTORY] [INIT] Scanning job page for client recent history: {job_url}")
                     # Scroll down to ensure client history component triggers lazy load
                     try:
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
@@ -611,11 +781,43 @@ class UpworkScraperService:
                     except Exception as e:
                         logger.debug(f"[SCRAPER] Scroll trigger encountered: {e}")
 
+                    # Check for presence of history section or login requirement
+                    has_history_section = False
+                    try:
+                        history_heading = await page.query_selector(
+                            "h2:has-text('recent history'), h3:has-text('recent history'), h4:has-text('recent history'), h5:has-text('recent history'), [data-cy='job']"
+                        )
+                        if history_heading:
+                            has_history_section = True
+                    except Exception:
+                        pass
+
+                    page_text = ""
+                    try:
+                        page_text = await page.inner_text("body")
+                    except Exception:
+                        pass
+
+                    if "Client's recent history" in page_text or "recent history" in page_text.lower():
+                        has_history_section = True
+
+                    if has_history_section:
+                        logger.info("[CLIENT HISTORY] [FOUND] Client recent history section detected on DOM.")
+                    else:
+                        if "Log in" in page_text and "Sign up" in page_text:
+                            logger.warning(
+                                "[CLIENT HISTORY] [UNAUTHENTICATED] Client history section is missing because Upwork rendered the page as an unauthenticated guest. Upwork hides client past contracts unless logged in with an active freelancer session."
+                            )
+                        else:
+                            logger.info(
+                                "[CLIENT HISTORY] [NOTICE] No client history section detected on page DOM. Client may have 0 past contracts or private history."
+                            )
+
                     # Click Jobs in progress
                     try:
-                        in_prog = await page.query_selector("[data-cy='jobs-in-progress-button']")
+                        in_prog = await page.query_selector("[data-cy='jobs-in-progress-button'], button:has-text('Jobs in progress')")
                         if in_prog and await in_prog.is_visible():
-                            logger.info("[SCRAPER] Clicking 'Jobs in progress' tab")
+                            logger.info("[CLIENT HISTORY] Clicking 'Jobs in progress' tab to reveal active contracts")
                             await in_prog.scroll_into_view_if_needed()
                             await in_prog.click()
                             await asyncio.sleep(1.5)
@@ -632,7 +834,7 @@ class UpworkScraperService:
                             await view_more.scroll_into_view_if_needed()
                             await view_more.click()
                             clicks += 1
-                            logger.info(f"[SCRAPER] Clicked 'View more' ({clicks}/{max_pages})")
+                            logger.info(f"[CLIENT HISTORY] Expanded additional past contracts: clicked 'View more' ({clicks}/{max_pages})")
                             await asyncio.sleep(1.8)
                         except Exception as e:
                             logger.debug(f"[SCRAPER] Pagination loop completed after {clicks} clicks: {e}")
@@ -648,9 +850,22 @@ class UpworkScraperService:
 
         # 3. Parse Detailed Job & History
         parsed = parse_job_details_html(html_content, job_url)
-        logger.info(
-            f"[SCRAPER] Parsed job details: '{parsed.get('title')}' with {len(parsed.get('contracts', []))} past contracts"
-        )
+        contracts_count = len(parsed.get("contracts", []))
+        if contracts_count > 0:
+            logger.info(
+                f"[CLIENT HISTORY] [SUCCESS] Successfully extracted {contracts_count} past contracts and reviews for '{parsed.get('title')}'."
+            )
+        else:
+            client_data = parsed.get("client", {})
+            total_hires = client_data.get("total_hires") or 0
+            if total_hires == 0:
+                logger.info(
+                    f"[CLIENT HISTORY] [COMPLETED] 0 past contracts found because client has 0 total hires (new client) on Upwork."
+                )
+            else:
+                logger.warning(
+                    f"[CLIENT HISTORY] [PARTIAL] Client has {total_hires} hires recorded in stats but 0 contracts were parsed from DOM. History may be private or unrendered."
+                )
 
         # Save Stage 2 Snapshot
         with open(snapshot_file, "w", encoding="utf-8") as f:
@@ -712,6 +927,28 @@ class UpworkScraperService:
             )
             session.add(db_client)
             await session.flush()
+        else:
+            if client_data.get("client_rating") is not None:
+                db_client.client_rating = _to_dec(client_data.get("client_rating"))
+            if client_data.get("city") and not db_client.city:
+                db_client.city = client_data.get("city")
+            if client_data.get("country") and not db_client.country:
+                db_client.country = client_data.get("country")
+            if client_data.get("local_time"):
+                db_client.local_time = client_data.get("local_time")
+            if total_spent > 0 or db_client.total_spent_usd == Decimal("0.00"):
+                db_client.total_spent_usd = total_spent
+            if client_data.get("payment_verified") is not None:
+                db_client.payment_verified = bool(client_data.get("payment_verified"))
+            if client_data.get("total_reviews"):
+                db_client.total_reviews = int(client_data.get("total_reviews"))
+            if client_data.get("total_hires"):
+                db_client.total_hires = int(client_data.get("total_hires"))
+            if client_data.get("active_hires"):
+                db_client.active_hires = int(client_data.get("active_hires"))
+            if client_data.get("member_since") and not db_client.member_since:
+                db_client.member_since = client_data.get("member_since")
+            await session.flush()
 
         # Upsert Job
         job_stmt = select(Job).filter_by(job_uid=job_uid)
@@ -729,6 +966,7 @@ class UpworkScraperService:
                 budget_max_usd=_to_dec(parsed.get("budget_max_usd")),
                 experience_level=parsed.get("experience_level"),
                 project_duration=parsed.get("project_duration"),
+                hours_per_week=parsed.get("hours_per_week"),
                 proposals_tier=parsed.get("proposals_tier"),
                 interviewing_count=int(parsed.get("interviewing_count") or 0),
                 invites_sent_count=int(parsed.get("invites_sent_count") or 0),
@@ -736,6 +974,29 @@ class UpworkScraperService:
                 description=parsed.get("description", ""),
             )
             session.add(db_job)
+            await session.flush()
+        else:
+            db_job.client_id = db_client.id
+            db_job.title = parsed["title"]
+            db_job.pay_type = parsed["pay_type"]
+            if parsed.get("budget_min_usd") is not None:
+                db_job.budget_min_usd = _to_dec(parsed.get("budget_min_usd"))
+            if parsed.get("budget_max_usd") is not None:
+                db_job.budget_max_usd = _to_dec(parsed.get("budget_max_usd"))
+            if parsed.get("experience_level"):
+                db_job.experience_level = parsed.get("experience_level")
+            if parsed.get("project_duration"):
+                db_job.project_duration = parsed.get("project_duration")
+            if parsed.get("hours_per_week"):
+                db_job.hours_per_week = parsed.get("hours_per_week")
+            if parsed.get("proposals_tier"):
+                db_job.proposals_tier = parsed.get("proposals_tier")
+            db_job.interviewing_count = int(parsed.get("interviewing_count") or db_job.interviewing_count)
+            db_job.invites_sent_count = int(parsed.get("invites_sent_count") or db_job.invites_sent_count)
+            if parsed.get("skills_tags"):
+                db_job.skills_tags = parsed.get("skills_tags")
+            if parsed.get("description"):
+                db_job.description = parsed.get("description")
             await session.flush()
 
         # Sync Contract History (Strict Partitioning)

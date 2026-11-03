@@ -167,7 +167,8 @@ async def discover_decision_makers(
 @router.get("/export")
 async def export_all_leads_excel(
     query: Optional[str] = Query(None, description="Filter jobs by search keyword or title"),
-    completed_only: bool = Query(True, description="Export only jobs with completed pipeline / discovered candidates"),
+    run_id: Optional[str] = Query(None, description="Filter jobs strictly by SearchRun ID"),
+    completed_only: bool = Query(False, description="Export only jobs with completed pipeline / discovered candidates"),
     min_spend: Optional[Decimal] = Query(None, description="Filter jobs by minimum client spend in USD"),
     tier: Optional[str] = Query(None, description="Filter by candidate match tier, e.g. 'Tier A'"),
     country: Optional[str] = Query(None, description="Filter by client country"),
@@ -175,12 +176,13 @@ async def export_all_leads_excel(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Exports a sales-ready Master 46-Column Excel Workbook (.xlsx) across all analyzed leads
+    Exports a sales-ready Master 34-Column Excel Workbook (.xlsx) across all analyzed leads
     with optional filtering by search keyword, completion status, spend, tier, and country.
     """
     file_path = await excel_export_service.export_from_db(
         session=db,
         query=query,
+        run_id=run_id,
         completed_only=completed_only,
         min_spend=min_spend,
         tier=tier,
@@ -207,7 +209,7 @@ async def export_job_leads_excel(
     db: AsyncSession = Depends(get_db_session),
 ):
     """
-    Generates and downloads the sales-ready 46-Column Excel Workbook for a single job lead.
+    Generates and downloads the sales-ready 34-Column Excel Workbook for a single job lead.
     """
     # Verify job exists
     stmt = select(Job).filter_by(job_uid=job_uid)

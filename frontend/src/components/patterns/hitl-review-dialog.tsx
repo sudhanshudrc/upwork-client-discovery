@@ -86,206 +86,111 @@ export function HitlReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Confirm Client Details</DialogTitle>
+          <DialogTitle>Review Client Details</DialogTitle>
           <DialogDescription>
-            Select from detected entities or manually edit the client name and organization before searching LinkedIn.
+            Verify the client name and target role before searching LinkedIn.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Field 1: Client Name with Dropdown + Manual Input */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
-                Client Name <span className="text-[#B91C1C]">*</span>
-              </label>
-              <span className="text-[10px] text-[#B91C1C] font-medium">Required</span>
-            </div>
-
-            {/* Dropdown for Discovered Names */}
-            {clientNameOptions.length > 0 && (
-              <div className="space-y-1">
-                <select
-                  aria-label="Pick from detected client names"
-                  value={clientNameOptions.includes(clientName) ? clientName : ''}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      onClientNameChange(e.target.value);
-                    }
-                  }}
-                  className="w-full text-xs bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
-                >
-                  <option value="">-- Choose detected name (or type manually below) --</option>
-                  {clientNameOptions.map((name) => {
-                    const cand = intelligence?.client_name_candidates?.find(
-                      (c) => c.name.toLowerCase() === name.toLowerCase()
-                    );
-                    const label = cand
-                      ? `${name} (${Number(cand.confidence).toFixed(0)}% conf, ${cand.mention_count}x)`
-                      : name;
-                    return (
-                      <option key={name} value={name}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
-            {/* Manual text input */}
+          {/* Client Name Input & Suggestions */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Client Name
+            </label>
             <Input
               value={clientName}
               onChange={(e) => onClientNameChange(e.target.value)}
-              placeholder="e.g. Martin, Zarina, or Rupesh"
-              className={!clientName.trim() ? 'border-[#B91C1C]/50 focus:border-[#B91C1C]' : ''}
-              autoFocus
+              placeholder="e.g. John Smith"
             />
-
-            {/* Quick Pills if multiple names */}
-            {clientNameOptions.length > 1 && (
-              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] text-[#656C43] dark:text-[#BAC095]">Quick pick:</span>
-                {clientNameOptions.map((name) => {
-                  const isSelected = clientName.toLowerCase() === name.toLowerCase();
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => onClientNameChange(name)}
-                      className={`text-[11px] px-2 py-0.5 rounded cursor-pointer border transition-colors ${
-                        isSelected
-                          ? 'bg-[#636B2F] text-white border-[#636B2F]'
-                          : 'bg-[#EFF2E3] dark:bg-[#15180E] border-[#BAC095] dark:border-[#2E331E] hover:border-[#636B2F]'
-                      }`}
-                    >
-                      {name}
-                    </button>
-                  );
-                })}
+            {clientNameOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-400 self-center">Suggestions:</span>
+                {clientNameOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => onClientNameChange(name)}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 transition-colors border border-slate-200 dark:border-slate-700"
+                  >
+                    {name}
+                  </button>
+                ))}
               </div>
             )}
-
-            <p className="text-[11px] text-[#656C43] dark:text-[#BAC095]">
-              Target person name used for LinkedIn in-app & Google X-Ray search. You can select above or edit manually.
-            </p>
           </div>
 
-          {/* Field 2: Company with Dropdown + Manual Input */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[#4D5333] dark:text-[#DCE1C4]">
-                Company / Organization
-              </label>
-              <span className="text-[10px] text-[#656C43] dark:text-[#BAC095]">Optional</span>
-            </div>
-
-            {/* Dropdown for Discovered Companies */}
-            {companyOptions.length > 0 && (
-              <div className="space-y-1">
-                <select
-                  aria-label="Pick from detected companies"
-                  value={companyOptions.includes(companyName) ? companyName : ''}
-                  onChange={(e) => onCompanyNameChange(e.target.value)}
-                  className="w-full text-xs bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
-                >
-                  <option value="">-- Choose detected company (or type manually below) --</option>
-                  <option value="">None / Independent Client</option>
-                  {companyOptions.map((comp) => {
-                    const cand = intelligence?.company_candidates?.find(
-                      (c) => c.name.toLowerCase() === comp.toLowerCase()
-                    );
-                    const label = cand ? `${comp} (${Number(cand.confidence).toFixed(0)}% conf)` : comp;
-                    return (
-                      <option key={comp} value={comp}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
-            {/* Manual text input */}
+          {/* Company Name Input & Suggestions */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Company Name (Optional)
+            </label>
             <Input
               value={companyName}
               onChange={(e) => onCompanyNameChange(e.target.value)}
-              placeholder="Leave empty if unknown or independent client"
+              placeholder="e.g. Acme Corporation"
             />
-            <p className="text-[11px] text-[#656C43] dark:text-[#BAC095]">
-              Optional. If left blank, searches match by name and client location without company restrictions.
-            </p>
+            {companyOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-400 self-center">Suggestions:</span>
+                {companyOptions.map((comp) => (
+                  <button
+                    key={comp}
+                    type="button"
+                    onClick={() => onCompanyNameChange(comp)}
+                    className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 transition-colors border border-slate-200 dark:border-slate-700"
+                  >
+                    {comp}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Field 3: Target Role with Dropdown + Manual Input */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[#4D5333] dark:text-[#DCE1C4]">
-                Target Decision-Maker Role
-              </label>
-              <span className="text-[10px] text-[#656C43] dark:text-[#BAC095]">Optional</span>
-            </div>
-
-            {/* Role Dropdown */}
-            <div className="space-y-1">
-              <select
-                aria-label="Pick target role"
-                value={COMMON_ROLES.includes(targetRole) ? targetRole : 'Custom'}
-                onChange={(e) => {
-                  if (e.target.value !== 'Custom') {
-                    onTargetRoleChange(e.target.value);
-                  }
-                }}
-                className="w-full text-xs bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
-              >
-                {COMMON_ROLES.map((role) => (
-                  <option key={role} value={role}>
-                    {role}
-                  </option>
-                ))}
-                <option value="Custom">Custom Role (Type below)</option>
-              </select>
-            </div>
-
-            {/* Manual text input */}
+          {/* Target Role Input & Common Roles */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Target Role
+            </label>
             <Input
               value={targetRole}
               onChange={(e) => onTargetRoleChange(e.target.value)}
-              placeholder="e.g. Founder, CEO, Director, CTO"
+              placeholder="e.g. CTO, Founder, VP Engineering"
             />
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <span className="text-[10px] text-slate-400 self-center">Common:</span>
+              {COMMON_ROLES.slice(0, 5).map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => onTargetRoleChange(role)}
+                  className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 transition-colors border border-slate-200 dark:border-slate-700"
+                >
+                  {role}
+                </button>
+              ))}
+            </div>
           </div>
-
-          {/* Review Quote Evidence */}
-          {intelligence?.client_name_candidates?.[0]?.supporting_context && (
-            <div className="p-3 rounded-lg bg-[#EFF4DC]/40 dark:bg-[#2B3118]/40 border border-[#636B2F]/30 text-xs space-y-1">
-              <span className="text-[10px] font-semibold text-[#636B2F] dark:text-[#D4DE95] uppercase tracking-wide block">
-                Quote from Past Freelancer Feedback:
-              </span>
-              <p className="italic text-[#3D4127] dark:text-[#F8F9F3]">
-                &quot;{intelligence.client_name_candidates[0].supporting_context}&quot;
-              </p>
-            </div>
-          )}
-
-          {intelligence?.agency_detection_reason && (
-            <div className="text-[11px] text-[#656C43] dark:text-[#BAC095]">
-              Organization type: {intelligence.agency_detection_reason}
-            </div>
-          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={isConfirming}
+          >
             Cancel
           </Button>
           <Button
             variant="primary"
+            size="sm"
             onClick={onConfirm}
             disabled={isConfirming || !clientName.trim()}
           >
-            {isConfirming ? 'Searching...' : 'Find Decision-Makers on LinkedIn'}
+            {isConfirming ? 'Searching LinkedIn...' : 'Confirm & Search Leads'}
           </Button>
         </DialogFooter>
       </DialogContent>

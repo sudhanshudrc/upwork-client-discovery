@@ -82,6 +82,7 @@ async def expand_job_details_and_history(
         "pay_type": parsed.get("pay_type"),
         "experience_level": parsed.get("experience_level"),
         "project_duration": parsed.get("project_duration"),
+        "hours_per_week": parsed.get("hours_per_week"),
         "proposals_tier": parsed.get("proposals_tier"),
         "interviewing_count": parsed.get("interviewing_count", 0),
         "invites_sent_count": parsed.get("invites_sent_count", 0),
@@ -93,7 +94,7 @@ async def expand_job_details_and_history(
         "client_total_hires": client_info.get("total_hires", 0),
         "client_active_hires": client_info.get("active_hires", 0),
         "client_avg_hourly_rate": str(client_info.get("avg_hourly_rate_usd")) if client_info.get("avg_hourly_rate_usd") else None,
-        "client_rating": str(client_info.get("client_rating")) if client_info.get("client_rating") else "5.0",
+        "client_rating": str(client_info.get("client_rating")) if client_info.get("client_rating") is not None else None,
         "client_payment_verified": client_info.get("payment_verified", True),
         "client_company_size": client_info.get("company_size"),
         "client_industry": client_info.get("industry"),
@@ -185,13 +186,36 @@ async def get_domain_jobs(
     age_seconds = (now_utc - created_utc).total_seconds() if created_utc else 99999
     is_active = age_seconds < 3600
 
+    jobs_list = list(run.raw_jobs_payload or [])
+    if jobs_list:
+        try:
+            uids = [j.get("uid") for j in jobs_list if isinstance(j, dict) and j.get("uid")]
+            if uids:
+                stmt_e = select(Job).options(selectinload(Job.client)).where(Job.job_uid.in_(uids))
+                res_e = await db.execute(stmt_e)
+                known_jobs = {k.job_uid: k for k in res_e.scalars().all()}
+                for j in jobs_list:
+                    if isinstance(j, dict):
+                        kj = known_jobs.get(j.get("uid"))
+                        if kj and kj.client:
+                            c = kj.client
+                            if c.client_rating:
+                                j["client_rating"] = str(c.client_rating)
+                            if c.total_spent_usd and not j.get("client_spent"):
+                                j["client_spent"] = f"${float(c.total_spent_usd):,.0f} spent"
+                            if c.country and not j.get("client_location"):
+                                j["client_location"] = c.country
+                                j["location"] = c.country
+        except Exception:
+            pass
+
     return JobDomainJobsResponse(
         query=run.search_query,
         run_id=str(run.id),
         created_at=created_utc,
         total_jobs=run.total_jobs_found,
         is_cache_active=is_active,
-        jobs=run.raw_jobs_payload or [],
+        jobs=jobs_list,
     )
 
 

@@ -1,18 +1,16 @@
-import { Briefcase, Compass, Users, Activity, ChevronRight } from 'lucide-react';
+import { Bookmark, History, Users, KeyRound, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import type { AppPage } from '@/components/patterns/app-header';
 
 interface StatGridProps {
   harvestedJobsCount: number;
   uniqueDomainsCount: number;
   potentialClientsCount: number;
-  rateLimitHealth: string;
+  rateLimitHealth?: string;
   activeCookiesCount?: number;
   latestDomain?: string | null;
-  onOpenHarvestedJobs?: () => void;
-  onOpenJobDomains?: () => void;
-  onOpenPotentialClients?: () => void;
-  onOpenSessionHealth?: () => void;
+  activeProfile?: string;
+  onNavigate: (page: AppPage) => void;
   className?: string;
 }
 
@@ -20,152 +18,164 @@ export function StatGrid({
   harvestedJobsCount,
   uniqueDomainsCount,
   potentialClientsCount,
-  rateLimitHealth,
   activeCookiesCount = 0,
   latestDomain,
-  onOpenHarvestedJobs,
-  onOpenJobDomains,
-  onOpenPotentialClients,
-  onOpenSessionHealth,
+  onNavigate,
   className = '',
 }: StatGridProps) {
+  const isConnected = activeCookiesCount > 0;
+
   return (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 ${className}`}>
-      {/* 1. Harvested Jobs */}
+      {/* 1. Saved Jobs Card */}
       <Card
-        onClick={onOpenHarvestedJobs}
+        onClick={() => onNavigate('saved-jobs')}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenHarvestedJobs?.()}
-        className="p-4 border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] cursor-pointer hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all group text-left select-none"
+        onKeyDown={(e) => e.key === 'Enter' && onNavigate('saved-jobs')}
+        className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group text-left select-none"
       >
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[#656C43] dark:text-[#BAC095] uppercase tracking-wide">
-            Harvested Jobs
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            Saved Jobs
           </span>
-          <div className="size-7 rounded-md bg-[#EFF4DC] dark:bg-[#2B3118] flex items-center justify-center text-[#636B2F] dark:text-[#D4DE95] group-hover:scale-105 transition-transform">
-            <Briefcase className="size-3.5" />
+          <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <Bookmark className="size-4" />
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-baseline justify-between">
-          <span className="text-2xl font-bold font-mono text-[#3D4127] dark:text-[#F8F9F3]">
+        <div className="mt-3 flex items-baseline justify-between">
+          <span className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-50">
             {harvestedJobsCount}
           </span>
-          <Badge variant="brand" className="text-[10px] py-0 px-1.5 font-medium flex items-center gap-0.5">
-            View All <ChevronRight className="size-2.5" />
-          </Badge>
+          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center group-hover:translate-x-0.5 transition-transform">
+            View Page <ChevronRight className="size-3 ms-0.5" />
+          </span>
         </div>
 
-        <div className="mt-1 text-[11px] text-[#656C43] dark:text-[#BAC095] truncate">
-          All postings saved in database
+        <div className="mt-1 text-xs text-slate-500 truncate">
+          Total job postings collected
         </div>
       </Card>
 
-      {/* 2. Job Domains */}
+      {/* 2. Search History Card */}
       <Card
-        onClick={onOpenJobDomains}
+        onClick={() => onNavigate('search-history')}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenJobDomains?.()}
-        className="p-4 border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] cursor-pointer hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all group text-left select-none"
+        onKeyDown={(e) => e.key === 'Enter' && onNavigate('search-history')}
+        className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group text-left select-none"
       >
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[#656C43] dark:text-[#BAC095] uppercase tracking-wide">
-            Job Domains
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            Search History
           </span>
-          <div className="size-7 rounded-md bg-[#EFF4DC] dark:bg-[#2B3118] flex items-center justify-center text-[#636B2F] dark:text-[#D4DE95] group-hover:scale-105 transition-transform">
-            <Compass className="size-3.5" />
+          <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <History className="size-4" />
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-baseline justify-between">
-          <span className="text-2xl font-bold font-mono text-[#3D4127] dark:text-[#F8F9F3]">
+        <div className="mt-3 flex items-baseline justify-between">
+          <span className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-50">
             {uniqueDomainsCount}
           </span>
-          <Badge variant="neutral" className="text-[10px] py-0 px-1.5 font-medium flex items-center gap-0.5">
-            History <ChevronRight className="size-2.5" />
-          </Badge>
+          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center group-hover:translate-x-0.5 transition-transform">
+            View Page <ChevronRight className="size-3 ms-0.5" />
+          </span>
         </div>
 
-        <div className="mt-1 text-[11px] text-[#656C43] dark:text-[#BAC095] truncate">
-          {latestDomain ? `Latest: "${latestDomain}"` : 'Keywords searched throughout'}
+        <div className="mt-1 text-xs text-slate-500 truncate">
+          {latestDomain ? `Latest: "${latestDomain}"` : 'Saved search queries'}
         </div>
       </Card>
 
-      {/* 3. Potential Clients */}
+      {/* 3. Discovered Clients Card */}
       <Card
-        onClick={onOpenPotentialClients}
+        onClick={() => onNavigate('clients')}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenPotentialClients?.()}
-        className="p-4 border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] cursor-pointer hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all group text-left select-none"
+        onKeyDown={(e) => e.key === 'Enter' && onNavigate('clients')}
+        className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer hover:border-blue-500 hover:shadow-md transition-all group text-left select-none"
       >
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[#656C43] dark:text-[#BAC095] uppercase tracking-wide">
-            Potential Clients
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            Discovered Clients
           </span>
-          <div className="size-7 rounded-md bg-[#EFF4DC] dark:bg-[#2B3118] flex items-center justify-center text-[#636B2F] dark:text-[#D4DE95] group-hover:scale-105 transition-transform">
-            <Users className="size-3.5" />
+          <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-all">
+            <Users className="size-4" />
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-baseline justify-between">
-          <span className="text-2xl font-bold font-mono text-[#3D4127] dark:text-[#F8F9F3]">
+        <div className="mt-3 flex items-baseline justify-between">
+          <span className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-50">
             {potentialClientsCount}
           </span>
-          <Badge variant="brand" className="text-[10px] py-0 px-1.5 font-medium flex items-center gap-0.5">
-            Directory <ChevronRight className="size-2.5" />
-          </Badge>
+          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center group-hover:translate-x-0.5 transition-transform">
+            View Page <ChevronRight className="size-3 ms-0.5" />
+          </span>
         </div>
 
-        <div className="mt-1 text-[11px] text-[#656C43] dark:text-[#BAC095] truncate">
-          Clients with discovered decision-makers
+        <div className="mt-1 text-xs text-slate-500 truncate">
+          Businesses & verified decision-makers
         </div>
       </Card>
 
-      {/* 4. Rate Limit Health */}
+      {/* 4. Upwork Connection Status Card */}
       <Card
-        onClick={onOpenSessionHealth}
+        onClick={() => onNavigate('connection')}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && onOpenSessionHealth?.()}
-        className="p-4 border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] cursor-pointer hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all group text-left select-none"
+        onKeyDown={(e) => e.key === 'Enter' && onNavigate('connection')}
+        className={`p-4 border bg-white dark:bg-slate-900 cursor-pointer hover:shadow-md transition-all group text-left select-none ${
+          isConnected
+            ? 'border-slate-200 dark:border-slate-800 hover:border-emerald-500'
+            : 'border-red-300 dark:border-red-800/80 bg-red-50/20 dark:bg-red-950/20 hover:border-red-500'
+        }`}
       >
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[#656C43] dark:text-[#BAC095] uppercase tracking-wide">
-            Rate Limit Health
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+            Upwork Connection
           </span>
-          <div className="size-7 rounded-md bg-[#EFF4DC] dark:bg-[#2B3118] flex items-center justify-center text-[#636B2F] dark:text-[#D4DE95] group-hover:scale-105 transition-transform">
-            <Activity className="size-3.5" />
+          <div
+            className={`size-8 rounded-lg flex items-center justify-center transition-all ${
+              isConnected
+                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white'
+                : 'bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white'
+            }`}
+          >
+            <KeyRound className="size-4" />
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-baseline justify-between">
+        <div className="mt-3 flex items-baseline justify-between">
           <div className="flex items-center gap-1.5">
+            {isConnected ? (
+              <CheckCircle2 className="size-4 text-emerald-600" />
+            ) : (
+              <AlertCircle className="size-4 text-red-600" />
+            )}
             <span
-              className={`size-2.5 rounded-full ${
-                rateLimitHealth === 'GREEN'
-                  ? 'bg-[#636B2F]'
-                  : rateLimitHealth === 'YELLOW'
-                  ? 'bg-[#B37D2C]'
-                  : 'bg-[#B91C1C]'
+              className={`text-lg font-bold ${
+                isConnected ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
               }`}
-            />
-            <span className="text-lg font-bold font-mono text-[#3D4127] dark:text-[#F8F9F3]">
-              {rateLimitHealth}
+            >
+              {isConnected ? 'Connected' : 'Cookies Needed'}
             </span>
           </div>
-          <Badge
-            variant={rateLimitHealth === 'GREEN' ? 'success' : 'warning'}
-            className="text-[10px] py-0 px-1.5 font-medium flex items-center gap-0.5"
+
+          <span
+            className={`text-xs font-semibold flex items-center group-hover:translate-x-0.5 transition-transform ${
+              isConnected ? 'text-emerald-600' : 'text-red-600'
+            }`}
           >
-            Session <ChevronRight className="size-2.5" />
-          </Badge>
+            Manage <ChevronRight className="size-3 ms-0.5" />
+          </span>
         </div>
 
-        <div className="mt-1 text-[11px] text-[#656C43] dark:text-[#BAC095] truncate">
-          {activeCookiesCount > 0 ? `${activeCookiesCount} cookies active` : 'Session connection status'}
+        <div className="mt-1 text-xs text-slate-500 truncate">
+          {isConnected
+            ? `${activeCookiesCount} active cookies loaded`
+            : 'Action required: click to connect'}
         </div>
       </Card>
     </div>

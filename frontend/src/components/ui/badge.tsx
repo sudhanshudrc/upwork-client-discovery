@@ -8,21 +8,21 @@ const badgeVariants = cva(
     variants: {
       variant: {
         'tier-a':
-          'bg-[#EFF4DC] text-[#3D4127] border border-[#636B2F] font-semibold dark:bg-[#2B3118] dark:text-[#D4DE95]',
+          'bg-blue-50 text-blue-700 border border-blue-200 font-semibold dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
         'tier-b':
-          'bg-[#F4F6EA] text-[#3D4127] border border-[#BAC095] dark:bg-[#222714] dark:text-[#DCE1C4]',
+          'bg-slate-50 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
         'tier-c':
-          'bg-[#F8F9F3] text-[#656C43] border border-[#D8DCC5] dark:bg-[#1B1E10] dark:text-[#BAC095]',
+          'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700',
         brand:
-          'bg-[#EFF4DC] text-[#636B2F] border border-[#636B2F] font-medium dark:bg-[#2B3118] dark:text-[#D4DE95]',
+          'bg-blue-50 text-blue-700 border border-blue-200 font-medium dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800',
         neutral:
-          'bg-[#EFF2E3] text-[#4D5333] border border-[#E1E4D3] dark:bg-[#15180E] dark:text-[#DCE1C4] dark:border-[#2E331E]',
+          'bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
         success:
-          'bg-[#EFF4DC] text-[#636B2F] border border-[#636B2F] dark:bg-[#2B3118] dark:text-[#D4DE95]',
+          'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
         warning:
-          'bg-[#FEF6EC] text-[#B37D2C] border border-[#F2D7B3] dark:bg-[#2A1D0B] dark:text-[#E9B86A] dark:border-[#5C3E14]',
+          'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
         error:
-          'bg-[#FDF2F2] text-[#B91C1C] border border-[#F3C4C4] dark:bg-[#3D1414] dark:text-[#F87171] dark:border-[#7F1D1D]',
+          'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800',
       },
     },
     defaultVariants: {
@@ -44,4 +44,3 @@ export function Badge({ className, variant, ...props }: BadgeProps) {
     />
   );
 }
-

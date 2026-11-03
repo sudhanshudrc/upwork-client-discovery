@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Search, RefreshCw, Sparkles, FileSpreadsheet } from 'lucide-react';
+import { Search, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -12,9 +12,6 @@ interface SearchHeaderProps {
   onForceLiveChange: (forceLive: boolean) => void;
   onSearch: (e?: React.FormEvent) => void;
   isSearching: boolean;
-  onRunSinglePipeline?: () => void;
-  isRunningPipeline?: boolean;
-  hasSelectedJob?: boolean;
   exportBatchUrl?: string;
 }
 
@@ -27,13 +24,10 @@ export function SearchHeader({
   onForceLiveChange,
   onSearch,
   isSearching,
-  onRunSinglePipeline,
-  isRunningPipeline = false,
-  hasSelectedJob = false,
   exportBatchUrl,
 }: SearchHeaderProps) {
   return (
-    <section className="rounded-2xl border border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
       <form onSubmit={onSearch} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative flex-1">
@@ -43,26 +37,26 @@ export function SearchHeader({
               placeholder="Search by role or skill (e.g. Frontend Developer, Python, AI)..."
               className="pe-10"
             />
-            <Search className="size-4 text-[#656C43] dark:text-[#BAC095] absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="size-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           <div className="flex items-center gap-2">
             <select
               value={limit}
               onChange={(e) => onLimitChange(Number(e.target.value))}
-              className="h-11 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] px-3 text-xs text-[#3D4127] dark:text-[#F8F9F3] outline-none"
+              className="h-10 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-700 dark:text-slate-300 outline-none focus:border-blue-500"
             >
               <option value={3}>Limit: 3</option>
               <option value={5}>Limit: 5</option>
               <option value={10}>Limit: 10</option>
             </select>
 
-            <label className="flex items-center gap-2 text-xs text-[#4D5333] dark:text-[#DCE1C4] cursor-pointer px-2 select-none">
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer px-2 select-none">
               <input
                 type="checkbox"
                 checked={forceLive}
                 onChange={(e) => onForceLiveChange(e.target.checked)}
-                className="rounded border-[#BAC095] text-[#636B2F] focus:ring-[#636B2F]"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <span>Live Search</span>
             </label>
@@ -70,7 +64,7 @@ export function SearchHeader({
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button type="submit" variant="primary" disabled={isSearching}>
+          <Button type="submit" variant="primary" disabled={isSearching} className="h-10">
             {isSearching ? (
               <RefreshCw className="size-4 me-2 animate-spin" />
             ) : (
@@ -79,27 +73,15 @@ export function SearchHeader({
             {isSearching ? 'Searching...' : 'Search Jobs'}
           </Button>
 
-          {hasSelectedJob && onRunSinglePipeline && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onRunSinglePipeline}
-              disabled={isRunningPipeline}
-            >
-              <Sparkles className="size-4 me-1.5" />
-              {isRunningPipeline ? 'Analyzing...' : 'Auto-Find Leads'}
-            </Button>
-          )}
-
           {exportBatchUrl && (
             <a
               href={exportBatchUrl}
               download
-              className="inline-flex items-center justify-center h-10 px-3.5 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3] hover:bg-[#EFF2E3] dark:hover:bg-[#202414] transition-colors"
-              title={`Download all completed leads for "${query}" as an Excel spreadsheet`}
+              className="inline-flex items-center justify-center h-10 px-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              title={`Download leads for "${query}" as an Excel spreadsheet`}
             >
-              <FileSpreadsheet className="size-4 me-1.5 text-[#636B2F]" />
-              Export Keyword (.xlsx)
+              <FileSpreadsheet className="size-3.5 me-1.5 text-emerald-600" />
+              <span>Export Excel</span>
             </a>
           )}
         </div>

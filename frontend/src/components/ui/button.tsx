@@ -4,26 +4,26 @@ import { cn } from '@/components/ui/utils';
 import { spring } from '@/components/motion/seeds';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-medium text-sm transition-colors duration-150 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#636B2F] focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none min-h-11',
+  'inline-flex items-center justify-center font-medium text-sm transition-colors duration-150 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none min-h-10',
   {
     variants: {
       variant: {
         primary:
-          'bg-[#636B2F] text-[#F8F9F3] hover:bg-[#505724] active:bg-[#3D4127] shadow-sm dark:bg-[#D4DE95] dark:text-[#15180E] dark:hover:bg-[#E4EBB2]',
+          'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white',
         secondary:
-          'bg-[#EFF2E3] text-[#3D4127] border border-[#BAC095] hover:bg-[#E7EBD6] hover:border-[#636B2F] dark:bg-[#202414] dark:text-[#F8F9F3] dark:border-[#4A5129]',
+          'bg-slate-100 text-slate-800 border border-slate-200 hover:bg-slate-200 hover:border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:hover:bg-slate-700',
         outline:
-          'bg-transparent border border-[#BAC095] dark:border-[#4A5129] text-[#4D5333] dark:text-[#DCE1C4] hover:bg-[#EFF2E3] dark:hover:bg-[#292E1B] hover:text-[#3D4127] dark:hover:text-[#F8F9F3] hover:border-[#636B2F]',
+          'bg-transparent border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white hover:border-slate-300',
         ghost:
-          'bg-transparent text-[#4D5333] dark:text-[#DCE1C4] hover:bg-[#EFF2E3] dark:hover:bg-[#292E1B] hover:text-[#3D4127] dark:hover:text-[#F8F9F3]',
+          'bg-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
         danger:
-          'bg-[#B91C1C] text-[#FBFCFC] hover:bg-[#991B1B] shadow-sm',
+          'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 shadow-sm',
       },
       size: {
-        sm: 'h-9 px-3 text-xs min-w-[36px]',
-        md: 'h-11 px-4 text-sm min-w-11',
-        lg: 'h-12 px-6 text-base min-w-12',
-        icon: 'size-11 p-0',
+        sm: 'h-8 px-3 text-xs min-w-[32px]',
+        md: 'h-10 px-4 text-sm min-w-10',
+        lg: 'h-11 px-5 text-base min-w-11',
+        icon: 'size-10 p-0',
       },
     },
     defaultVariants: {

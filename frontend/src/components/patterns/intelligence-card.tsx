@@ -36,8 +36,8 @@ export function IntelligenceCard({
   confirmedIntelligence,
   clientLocation,
   onOpenReviewDialog,
-  onDiscoverLeads,
-  isDiscovering = false,
+  onDiscoverLeads: _onDiscoverLeads,
+  isDiscovering: _isDiscovering = false,
   selectedClientName,
   onSelectClientName,
   selectedCompanyName,
@@ -103,54 +103,36 @@ export function IntelligenceCard({
     if (confirmedIntelligence?.target_role?.trim()) {
       roles.add(confirmedIntelligence.target_role.trim());
     }
-    if (intelligence?.suggested_role?.trim()) {
-      roles.add(intelligence.suggested_role.trim());
-    }
     return Array.from(roles);
-  }, [selectedRole, confirmedIntelligence, intelligence]);
+  }, [selectedRole, confirmedIntelligence]);
 
   const activeClientName =
     selectedClientName ||
     confirmedIntelligence?.confirmed_client_name ||
-    clientNameOptions[0] ||
-    null;
+    intelligence?.suggested_client_name ||
+    '';
 
   const activeCompanyName =
-    selectedCompanyName !== undefined
-      ? selectedCompanyName
-      : confirmedIntelligence?.confirmed_company_name ||
-        intelligence?.suggested_company_name ||
-        '';
+    selectedCompanyName ||
+    confirmedIntelligence?.confirmed_company_name ||
+    intelligence?.suggested_company_name ||
+    '';
 
-  const activeRole =
-    selectedRole ||
-    confirmedIntelligence?.target_role ||
-    intelligence?.suggested_role ||
-    'CTO';
+  const activeRole = selectedRole || confirmedIntelligence?.target_role || 'CTO';
+  const isApproved = Boolean(confirmedIntelligence?.approval_status === 'APPROVED');
+  const confidence = intelligence?.client_name_candidates?.[0]?.confidence || 85;
+  const companyConfidence = intelligence?.company_candidates?.[0]?.confidence || null;
 
-  const confidence =
-    confirmedIntelligence?.name_confidence ||
-    intelligence?.client_name_candidates?.find(
-      (c) => c.name.toLowerCase() === activeClientName?.toLowerCase()
-    )?.confidence ||
-    intelligence?.client_name_candidates?.[0]?.confidence ||
-    null;
-
-  const companyConfidence = intelligence?.company_candidates?.find(
-    (c) => c.name.toLowerCase() === activeCompanyName?.toLowerCase()
-  )?.confidence;
-
-  const isApproved =
-    confirmedIntelligence?.approval_status === 'APPROVED' ||
-    intelligence?.approval_status === 'APPROVED';
-
-  if (!activeClientName && !intelligence && clientNameOptions.length === 0) {
+  if (!intelligence && !confirmedIntelligence) {
     return (
-      <div className="p-8 text-center text-xs text-[#656C43] dark:text-[#BAC095] border border-dashed border-[#BAC095] rounded-lg space-y-3">
-        <div>No client identity verified yet for this posting.</div>
+      <div className="p-8 text-center space-y-3">
+        <UserCheck className="size-8 mx-auto text-slate-400" />
+        <div className="text-xs text-slate-500">
+          Click &quot;Fetch Client History&quot; to review feedback and extract client names.
+        </div>
         <Button variant="secondary" size="sm" onClick={onOpenReviewDialog}>
           <UserCheck className="size-3.5 me-1" />
-          Identify Client Details
+          Verify Client Details
         </Button>
       </div>
     );
@@ -159,9 +141,9 @@ export function IntelligenceCard({
   return (
     <div className="space-y-4">
       {/* Top Status & Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#EFF2E3] dark:border-[#2E331E]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
+          <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">
             Client Verification & Profile
           </span>
           <Badge variant={isApproved ? 'success' : 'warning'}>
@@ -174,7 +156,8 @@ export function IntelligenceCard({
             Edit Details
           </Button>
 
-          {onDiscoverLeads && (
+          {/* LinkedIn discovery action temporarily hidden in UI (backend endpoints preserved) */}
+          {/* {onDiscoverLeads && (
             <Button
               variant="primary"
               size="sm"
@@ -183,24 +166,24 @@ export function IntelligenceCard({
             >
               {isDiscovering ? 'Searching...' : 'Find Decision-Makers on LinkedIn'}
             </Button>
-          )}
+          )} */}
         </div>
       </div>
 
       {/* Target Location Banner */}
       {clientLocation && (
-        <div className="p-3 rounded-lg border border-[#636B2F]/30 bg-[#EFF4DC]/40 dark:bg-[#2B3118]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
-            <MapPin className="size-4 text-[#636B2F] dark:text-[#D4DE95] shrink-0" />
-            <span className="font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
+            <MapPin className="size-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
               Location for LinkedIn Search:
             </span>
-            <span className="text-[#636B2F] dark:text-[#D4DE95] font-bold">
+            <span className="text-blue-700 dark:text-blue-300 font-bold">
               {clientLocation}
             </span>
           </div>
-          <span className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
-            Matches local metro area
+          <span className="text-[11px] text-slate-500">
+            Matches client metro area
           </span>
         </div>
       )}
@@ -208,14 +191,14 @@ export function IntelligenceCard({
       {/* Primary Extracted Entities Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Entity 1: Client Decision-Maker */}
-        <Card className="p-4 border-[#636B2F]/30 bg-[#EFF4DC]/30 dark:bg-[#2B3118]/30 space-y-2">
+        <Card className="p-4 border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#4D5333] dark:text-[#DCE1C4] flex items-center gap-1">
-              <UserCheck className="size-3.5 text-[#636B2F] dark:text-[#D4DE95]" />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+              <UserCheck className="size-3.5 text-blue-600" />
               Identified Client Name
             </span>
             {confidence && (
-              <Badge variant="tier-a" className="text-[10px]">
+              <Badge variant="brand" className="text-[10px]">
                 {Number(confidence).toFixed(0)}% Conf.
               </Badge>
             )}
@@ -227,7 +210,7 @@ export function IntelligenceCard({
                 aria-label="Select identified client name"
                 value={activeClientName || ''}
                 onChange={(e) => onSelectClientName?.(e.target.value)}
-                className="w-full text-sm font-bold bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
+                className="w-full text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 {clientNameOptions.map((name) => {
                   const cand = intelligence?.client_name_candidates?.find(
@@ -243,16 +226,16 @@ export function IntelligenceCard({
                   );
                 })}
               </select>
-              <div className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
+              <div className="text-[10px] text-slate-500">
                 {clientNameOptions.length} names detected (select active target)
               </div>
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="text-base font-bold text-[#3D4127] dark:text-[#F8F9F3]">
+              <div className="text-base font-bold text-slate-900 dark:text-slate-50">
                 {activeClientName || 'Not detected'}
               </div>
-              <div className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
+              <div className="text-[10px] text-slate-500">
                 Found in past freelancer reviews
               </div>
             </div>
@@ -260,10 +243,10 @@ export function IntelligenceCard({
         </Card>
 
         {/* Entity 2: Company / Organization */}
-        <Card className="p-4 border-[#BAC095] dark:border-[#2E331E] space-y-2">
+        <Card className="p-4 border-slate-200 dark:border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#4D5333] dark:text-[#DCE1C4] flex items-center gap-1">
-              <Building2 className="size-3.5 text-[#636B2F] dark:text-[#D4DE95]" />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+              <Building2 className="size-3.5 text-blue-600" />
               Company / Business
             </span>
             {companyConfidence && (
@@ -279,7 +262,7 @@ export function IntelligenceCard({
                 aria-label="Select company or business"
                 value={activeCompanyName || ''}
                 onChange={(e) => onSelectCompanyName?.(e.target.value)}
-                className="w-full text-sm font-bold bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
+                className="w-full text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">None / Independent Client</option>
                 {companyOptions.map((comp) => {
@@ -296,16 +279,16 @@ export function IntelligenceCard({
                   );
                 })}
               </select>
-              <div className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
+              <div className="text-[10px] text-slate-500">
                 Extracted from job posting & past titles
               </div>
             </div>
           ) : (
             <div className="space-y-1">
-              <div className="text-base font-bold text-[#3D4127] dark:text-[#F8F9F3]">
+              <div className="text-base font-bold text-slate-900 dark:text-slate-50">
                 {activeCompanyName || 'Not detected'}
               </div>
-              <div className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
+              <div className="text-[10px] text-slate-500">
                 Extracted from job posting
               </div>
             </div>
@@ -313,10 +296,10 @@ export function IntelligenceCard({
         </Card>
 
         {/* Entity 3: Target Role */}
-        <Card className="p-4 border-[#BAC095] dark:border-[#2E331E] space-y-2">
+        <Card className="p-4 border-slate-200 dark:border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-[#4D5333] dark:text-[#DCE1C4] flex items-center gap-1">
-              <Briefcase className="size-3.5 text-[#636B2F] dark:text-[#D4DE95]" />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1">
+              <Briefcase className="size-3.5 text-blue-600" />
               Target Role
             </span>
             <Badge variant="neutral" className="text-[10px]">
@@ -329,7 +312,7 @@ export function IntelligenceCard({
               aria-label="Select target role"
               value={activeRole}
               onChange={(e) => onSelectRole?.(e.target.value)}
-              className="w-full text-sm font-bold bg-[#EFF2E3] dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] border border-[#BAC095] dark:border-[#2E331E] rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#636B2F]"
+              className="w-full text-sm font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               {roleOptions.map((role) => (
                 <option key={role} value={role}>
@@ -337,7 +320,7 @@ export function IntelligenceCard({
                 </option>
               ))}
             </select>
-            <div className="text-[10px] text-[#656C43] dark:text-[#BAC095]">
+            <div className="text-[10px] text-slate-500">
               Target Seniority for LinkedIn Search
             </div>
           </div>
@@ -347,12 +330,12 @@ export function IntelligenceCard({
       {/* Review Evidence Snippets */}
       {(confirmedIntelligence?.name_evidence_snippet ||
         intelligence?.client_name_candidates?.[0]?.supporting_context) && (
-        <div className="p-3.5 rounded-lg border border-[#636B2F]/30 bg-[#EFF4DC]/40 dark:bg-[#2B3118]/40 text-xs space-y-1">
-          <div className="font-semibold text-[#636B2F] dark:text-[#D4DE95] flex items-center gap-1.5">
+        <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs space-y-1">
+          <div className="font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
             <Quote className="size-3.5" />
             Freelancer Review Quote:
           </div>
-          <p className="italic text-[#3D4127] dark:text-[#F8F9F3] ps-2 border-l-2 border-[#636B2F]">
+          <p className="italic text-slate-700 dark:text-slate-300 ps-2 border-l-2 border-blue-500">
             &quot;
             {confirmedIntelligence?.name_evidence_snippet ||
               intelligence?.client_name_candidates?.[0]?.supporting_context}
@@ -364,7 +347,7 @@ export function IntelligenceCard({
       {/* Discovered Candidate Entities List */}
       {intelligence?.client_name_candidates && intelligence.client_name_candidates.length > 1 && (
         <Card className="p-3.5 space-y-2">
-          <span className="text-[11px] font-semibold text-[#656C43] dark:text-[#BAC095] uppercase tracking-wide block">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
             Click to switch target decision maker ({intelligence.client_name_candidates.length} detected)
           </span>
           <div className="flex flex-wrap gap-2">
@@ -377,14 +360,14 @@ export function IntelligenceCard({
                   onClick={() => onSelectClientName?.(cand.name)}
                   className={`px-2.5 py-1 rounded text-xs flex items-center gap-1.5 transition-colors cursor-pointer border ${
                     isSelected
-                      ? 'bg-[#636B2F] text-white border-[#636B2F]'
-                      : 'bg-[#EFF2E3] dark:bg-[#15180E] border-[#BAC095] dark:border-[#2E331E] hover:border-[#636B2F]'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400'
                   }`}
                 >
                   <span className="font-semibold">
                     {cand.name}
                   </span>
-                  <span className={`text-[10px] ${isSelected ? 'text-[#EFF4DC]' : 'text-[#656C43] dark:text-[#BAC095]'}`}>
+                  <span className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>
                     ({Number(cand.confidence).toFixed(0)}%, {cand.mention_count}x)
                   </span>
                 </button>
@@ -395,14 +378,14 @@ export function IntelligenceCard({
       )}
 
       {/* Agency Detection Check */}
-      <div className="p-3 rounded-lg border border-[#E1E4D3] dark:border-[#2E331E] bg-[#EFF2E3] dark:bg-[#15180E] flex items-center justify-between text-xs">
+      <div className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
-          <ShieldAlert className="size-4 text-[#636B2F] dark:text-[#D4DE95]" />
-          <span className="text-[#4D5333] dark:text-[#DCE1C4]">
+          <ShieldAlert className="size-4 text-blue-600 dark:text-blue-400" />
+          <span className="text-slate-600 dark:text-slate-400">
             Hiring Organization Type:
           </span>
         </div>
-        <span className="font-medium text-[#3D4127] dark:text-[#F8F9F3]">
+        <span className="font-medium text-slate-900 dark:text-slate-100">
           {intelligence?.agency_detection_reason || 'Direct Client (Not an agency)'}
         </span>
       </div>

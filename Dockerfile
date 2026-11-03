@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     PORT=8000 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_TRUSTED_HOST="pypi.org files.pythonhosted.org pypi.python.org github.com objects.githubusercontent.com raw.githubusercontent.com" \
     NODE_TLS_REJECT_UNAUTHORIZED=0
@@ -52,17 +53,14 @@ RUN pip config set global.trusted-host "pypi.org files.pythonhosted.org pypi.pyt
     pip install --no-cache-dir ./wheels/en_core_web_sm-3.8.0-py3-none-any.whl && \
     rm -rf ./wheels
 
-# Install Playwright browser binary
-RUN NODE_TLS_REJECT_UNAUTHORIZED=0 playwright install chromium
-
-
+# Install Playwright browser binary and runtime system dependencies
+RUN NODE_TLS_REJECT_UNAUTHORIZED=0 playwright install --with-deps chromium
 
 # Copy application source code
 COPY . .
 
-
 # Create persistent storage directories
-RUN mkdir -p /app/data/snapshots /app/data/exports /app/secrets
+RUN mkdir -p /app/data/snapshots /app/data/exports /app/data/sessions /app/secrets
 
 EXPOSE 8000
 

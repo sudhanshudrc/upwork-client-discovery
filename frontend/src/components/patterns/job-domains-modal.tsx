@@ -134,7 +134,7 @@ export function JobDomainsModal({
 
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                     <a
-                      href={api.getBatchExcelExportUrl(domain.query, true)}
+                      href={api.getBatchExcelExportUrl(domain.query, undefined, false)}
                       download
                       className="inline-flex items-center justify-center text-xs h-8 px-2.5 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] text-[#3D4127] dark:text-[#F8F9F3] hover:bg-[#EFF2E3] dark:hover:bg-[#202414] transition-colors"
                       title={`Export all completed leads for "${domain.query}"`}

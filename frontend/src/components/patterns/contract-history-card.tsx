@@ -8,11 +8,11 @@ interface ContractHistoryCardProps {
 export function ContractHistoryCard({ contracts = [] }: ContractHistoryCardProps) {
   if (contracts.length === 0) {
     return (
-      <div className="p-8 text-center text-xs text-[#656C43] dark:text-[#BAC095] border border-dashed border-[#BAC095] rounded-lg space-y-2">
-        <div className="font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
+      <div className="p-8 text-center text-xs text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg space-y-2">
+        <div className="font-semibold text-slate-800 dark:text-slate-200">
           No contract history loaded yet
         </div>
-        <p className="text-[11px] text-[#656C43] dark:text-[#BAC095] max-w-md mx-auto leading-relaxed">
+        <p className="text-[11px] text-slate-500 max-w-md mx-auto leading-relaxed">
           Upwork masks client names on jobs by default. Past freelancer reviews frequently mention client names directly. Click &quot;Fetch History&quot; above to load past feedback.
         </p>
       </div>
@@ -21,7 +21,7 @@ export function ContractHistoryCard({ contracts = [] }: ContractHistoryCardProps
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#636B2F] dark:text-[#D4DE95]">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600">
         <Layers className="size-3.5" />
         Client Past Contract Reviews ({contracts.length})
       </div>
@@ -36,44 +36,44 @@ export function ContractHistoryCard({ contracts = [] }: ContractHistoryCardProps
         return (
           <div
             key={contract.id || idx}
-            className="p-3.5 rounded-lg border border-[#E1E4D3] dark:border-[#2E331E] bg-white dark:bg-[#202414] space-y-2 text-xs"
+            className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2 text-xs"
           >
             <div className="flex justify-between items-center">
-              <span className="font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
+              <span className="font-semibold text-slate-900 dark:text-slate-50">
                 {title}
               </span>
               <div className="flex items-center gap-2">
                 {contract.contract_status && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-[#EFF2E3] dark:bg-[#15180E] text-[#656C43] dark:text-[#BAC095] font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">
                     {contract.contract_status}
                   </span>
                 )}
                 {price && (
-                  <span className="font-mono text-[#656C43] dark:text-[#BAC095]">{price}</span>
+                  <span className="font-mono text-slate-500">{price}</span>
                 )}
               </div>
             </div>
 
             {minedName && (
-              <div className="text-[11px] text-[#636B2F] dark:text-[#D4DE95] font-medium">
+              <div className="text-[11px] text-blue-600 font-medium">
                 Client Name Identified: <strong className="underline">{minedName}</strong>
               </div>
             )}
 
             {reviewClean && (
-              <div className="p-2.5 rounded bg-[#EFF4DC]/40 dark:bg-[#2B3118]/40 border border-[#636B2F]/30">
-                <span className="font-semibold text-[#3D4127] dark:text-[#F8F9F3] block mb-0.5">
+              <div className="p-2.5 rounded bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 block mb-0.5">
                   Freelancer Feedback on Client:
                 </span>
-                <p className="italic text-[#3D4127] dark:text-[#F8F9F3]">
+                <p className="italic text-slate-700 dark:text-slate-300">
                   &quot;{reviewClean}&quot;
                 </p>
               </div>
             )}
 
             {reviewExcluded && (
-              <div className="p-2.5 rounded bg-[#EFF2E3] dark:bg-[#15180E] border border-[#BAC095] dark:border-[#2E331E] text-[#656C43] dark:text-[#BAC095] text-[11px]">
-                <span className="font-medium block mb-0.5 text-[#4D5333] dark:text-[#DCE1C4]">
+              <div className="p-2.5 rounded bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-500 text-[11px]">
+                <span className="font-medium block mb-0.5 text-slate-700 dark:text-slate-300">
                   Client Feedback to Freelancer:
                 </span>
                 &quot;{reviewExcluded}&quot;

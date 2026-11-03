@@ -28,11 +28,13 @@ services:
         condition: service_healthy
     env_file:
       - ./secrets/.env
+    shm_size: "2gb"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
       DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      SECRET_KEY: ${SECRET_KEY:-default_upwork_automation_secret_key_32b}
       SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
       RATE_LIMIT_MIN_JITTER_SECONDS: 8.0
       RATE_LIMIT_MAX_JITTER_SECONDS: 15.0

@@ -6,12 +6,22 @@ export interface FeedJobItem {
   title: string;
   url: string;
   budget: string | null;
+  job_type?: string | null;
   experience_level: string | null;
+  posted_time?: string | null;
+  duration?: string | null;
+  skills?: string[];
   client_spent: string | null;
-  snippet: string | null;
+  client_spent_snippet?: string | null;
+  client_rating?: string | null;
   client_location?: string | null;
   client_location_snippet?: string | null;
   location?: string | null;
+  proposals_tier?: string | null;
+  payment_verified?: boolean;
+  connects_cost?: string | null;
+  badges?: string[];
+  snippet: string | null;
 }
 
 export interface JobSearchResponse {
@@ -278,14 +288,69 @@ export interface SingleJobPipelineResponse {
   status: string;
 }
 
-const API_BASE = '/api/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || '/api/v1';
+
+export function getStoredUserIdentifier(): string {
+  return localStorage.getItem('upwork_user_identifier') || 'default';
+}
+
+export function setStoredUserIdentifier(id: string): void {
+  if (id && id.trim()) {
+    localStorage.setItem('upwork_user_identifier', id.trim());
+  } else {
+    localStorage.removeItem('upwork_user_identifier');
+  }
+}
+
+export function getStoredAuthToken(): string | null {
+  return localStorage.getItem('lead_intel_access_token');
+}
+
+export function setStoredAuthToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem('lead_intel_access_token', token);
+  } else {
+    localStorage.removeItem('lead_intel_access_token');
+  }
+}
+
+export function getStoredSerpApiKey(): string {
+  return localStorage.getItem('upwork_serpapi_key') || '';
+}
+
+export function setStoredSerpApiKey(key: string): void {
+  if (key && key.trim()) {
+    localStorage.setItem('upwork_serpapi_key', key.trim());
+  } else {
+    localStorage.removeItem('upwork_serpapi_key');
+  }
+}
+
+export interface UserProfileResponse {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  has_upwork_session: boolean;
+  upwork_cookie_count: number;
+  rate_limit_health: string;
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user: UserProfileResponse;
+}
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  const headers = {
+  const token = getStoredAuthToken();
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
 
   const response = await fetch(url, { ...options, headers });
@@ -306,6 +371,31 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  // User Account & Multi-Tenant Authentication
+  async registerUser(payload: { email: string; password: string; full_name?: string }): Promise<AuthTokenResponse> {
+    const res = await request<AuthTokenResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    setStoredAuthToken(res.access_token);
+    setStoredUserIdentifier(res.user.email);
+    return res;
+  },
+
+  async loginUser(payload: { email: string; password: string }): Promise<AuthTokenResponse> {
+    const res = await request<AuthTokenResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    setStoredAuthToken(res.access_token);
+    setStoredUserIdentifier(res.user.email);
+    return res;
+  },
+
+  async getCurrentUser(): Promise<UserProfileResponse> {
+    return request<UserProfileResponse>('/auth/me');
+  },
+
   // Session & Authentication
   async getSessionStatus(userIdentifier?: string): Promise<SessionStatusResponse> {
     const query = userIdentifier ? `?user_identifier=${encodeURIComponent(userIdentifier)}` : '';
@@ -317,15 +407,15 @@ export const api = {
     return request<SessionStatusResponse>(`/auth/verify${query}`, { method: 'POST' });
   },
 
-  async importSession(userIdentifier: string, sessionData: unknown): Promise<SessionStatusResponse> {
+  async importSession(userIdentifier: string, sessionData: unknown, password?: string): Promise<SessionStatusResponse> {
     return request<SessionStatusResponse>('/auth/session/import', {
       method: 'POST',
-      body: JSON.stringify({ user_identifier: userIdentifier, session_data: sessionData }),
+      body: JSON.stringify({
+        user_identifier: userIdentifier,
+        session_data: sessionData,
+        password: password || undefined,
+      }),
     });
-  },
-
-  async listSessions(): Promise<Array<{ user_identifier: string; cookie_count: number; is_present: boolean }>> {
-    return request<Array<{ user_identifier: string; cookie_count: number; is_present: boolean }>>('/auth/sessions');
   },
 
   // Job Search Feed
@@ -411,11 +501,14 @@ export const api = {
     return `${API_BASE}/leads/${encodeURIComponent(jobUid)}/export`;
   },
 
-  // Batch Excel Export URL Generator (Keyword / All Completed Jobs)
-  getBatchExcelExportUrl(query?: string, completedOnly = true): string {
+  // Batch Excel Export URL Generator (Keyword / Search Run / All Harvested Jobs)
+  getBatchExcelExportUrl(query?: string, runId?: string, completedOnly = false): string {
     const params = new URLSearchParams();
     if (query && query.trim()) {
       params.set('query', query.trim());
+    }
+    if (runId && runId.trim()) {
+      params.set('run_id', runId.trim());
     }
     if (completedOnly) {
       params.set('completed_only', 'true');
