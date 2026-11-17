@@ -33,6 +33,13 @@ from app.schemas.dashboard import (
     DashboardClientItem,
     HarvestedJobItem,
 )
+from app.schemas.schedule import (
+    ScheduleCreateRequest,
+    ScheduleUpdateRequest,
+    ScheduleExecutionLogResponse,
+    ScheduleResponse,
+    ScheduleTriggerResponse,
+)
 
 __all__ = [
     "UpworkCredentialsCreate",
@@ -63,5 +70,10 @@ __all__ = [
     "DiscoveredCandidateSummary",
     "DashboardClientItem",
     "HarvestedJobItem",
+    "ScheduleCreateRequest",
+    "ScheduleUpdateRequest",
+    "ScheduleExecutionLogResponse",
+    "ScheduleResponse",
+    "ScheduleTriggerResponse",
 ]
 

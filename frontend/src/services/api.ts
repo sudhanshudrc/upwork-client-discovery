@@ -65,6 +65,81 @@ export interface DashboardStatsResponse {
   active_session_cookies: number;
 }
 
+export interface ScheduleCreateRequest {
+  search_keyword: string;
+  target_limit?: number;
+  frequency_type?: string;
+  execution_time?: string;
+  selected_days?: string[];
+  timezone?: string;
+  interval_hours?: number;
+  cron_expression?: string;
+  min_delay_seconds?: number;
+  max_delay_seconds?: number;
+  recipient_emails: string[];
+  email_subject_template?: string;
+  is_active?: boolean;
+}
+
+export interface ScheduleUpdateRequest {
+  search_keyword?: string;
+  target_limit?: number;
+  frequency_type?: string;
+  execution_time?: string;
+  selected_days?: string[];
+  timezone?: string;
+  interval_hours?: number;
+  cron_expression?: string;
+  min_delay_seconds?: number;
+  max_delay_seconds?: number;
+  recipient_emails?: string[];
+  email_subject_template?: string;
+  is_active?: boolean;
+}
+
+export interface ScheduleExecutionLogResponse {
+  id: string;
+  schedule_id: string;
+  status: string;
+  jobs_scraped: number;
+  jobs_expanded: number;
+  excel_file_path?: string | null;
+  email_status: string;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+}
+
+export interface ScheduleResponse {
+  id: string;
+  user_identifier: string;
+  search_keyword: string;
+  target_limit: number;
+  frequency_type: string;
+  execution_time: string;
+  selected_days: string[];
+  timezone: string;
+  interval_hours?: number | null;
+  cron_expression?: string | null;
+  min_delay_seconds: number;
+  max_delay_seconds: number;
+  recipient_emails: string[];
+  email_subject_template?: string | null;
+  is_active: boolean;
+  last_run_at?: string | null;
+  next_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  latest_execution?: ScheduleExecutionLogResponse | null;
+}
+
+export interface ScheduleTriggerResponse {
+  message: string;
+  task_id: string;
+  schedule_id: string;
+}
+
 export interface OriginJobSummary {
   id: string;
   job_uid: string;
@@ -100,6 +175,10 @@ export interface DashboardClientItem {
   tier_a_candidate: DiscoveredCandidateSummary | null;
   candidates: DiscoveredCandidateSummary[];
   direct_search_urls: string[];
+  linkedin_url_metro_name?: string | null;
+  linkedin_url_metro_keywords?: string | null;
+  linkedin_url_country_keywords?: string | null;
+  linkedin_url_text_fallback?: string | null;
 }
 
 export interface HarvestedJobItem {
@@ -258,6 +337,10 @@ export interface DecisionMakerDiscoveryResponse {
   potential_candidates: CandidateScoreRecord[];
   direct_linkedin_search_urls: string[];
   excel_download_url: string;
+  linkedin_url_metro_name?: string | null;
+  linkedin_url_metro_keywords?: string | null;
+  linkedin_url_country_keywords?: string | null;
+  linkedin_url_text_fallback?: string | null;
 }
 
 export interface SessionStatusResponse {
@@ -419,17 +502,25 @@ export const api = {
   },
 
   // Job Search Feed
-  async searchJobs(query: string, limit = 5, forceLive = false): Promise<JobSearchResponse> {
+  async searchJobs(query: string, limit = 5, forceLive = false, userIdentifier?: string): Promise<JobSearchResponse> {
+    const activeUser = userIdentifier || getStoredUserIdentifier() || undefined;
     return request<JobSearchResponse>('/jobs/search', {
       method: 'POST',
-      body: JSON.stringify({ query, limit, force_live: forceLive }),
+      body: JSON.stringify({
+        query,
+        limit,
+        force_live: forceLive,
+        user_identifier: activeUser,
+      }),
     });
   },
 
   // Deep Job Expansion
-  async expandJob(jobUid: string, jobUrl?: string, forceLive = false): Promise<JobExpandResponse> {
+  async expandJob(jobUid: string, jobUrl?: string, forceLive = false, userIdentifier?: string): Promise<JobExpandResponse> {
+    const activeUser = userIdentifier || getStoredUserIdentifier() || undefined;
     const url = jobUrl || (jobUid.startsWith('~') ? `https://www.upwork.com/jobs/${jobUid}` : `https://www.upwork.com/jobs/~02${jobUid}`);
-    const query = `?job_url=${encodeURIComponent(url)}&force_live=${forceLive}`;
+    const userQuery = activeUser ? `&user_identifier=${encodeURIComponent(activeUser)}` : '';
+    const query = `?job_url=${encodeURIComponent(url)}&force_live=${forceLive}${userQuery}`;
     return request<JobExpandResponse>(`/jobs/${encodeURIComponent(jobUid)}/expand${query}`, {
       method: 'POST',
     });
@@ -447,13 +538,14 @@ export const api = {
 
   // Human-in-the-Loop Confirmation
   async confirmIntelligence(payload: {
-    job_id: string;
+    job_id?: string;
+    job_uid?: string;
     confirmed_client_name: string;
-    confirmed_company_name: string;
+    confirmed_company_name?: string;
     target_role?: string;
     is_agency?: boolean;
-  }): Promise<{ status: string; intelligence: ConfirmedIntelligence }> {
-    return request('/intelligence/confirm', {
+  }): Promise<ConfirmedIntelligence> {
+    return request<ConfirmedIntelligence>('/intelligence/confirm', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -515,6 +607,49 @@ export const api = {
     }
     const qs = params.toString();
     return `${API_BASE}/leads/export${qs ? `?${qs}` : ''}`;
+  },
+
+  // Schedules & Background Automations
+  async listSchedules(userIdentifier?: string, activeOnly = false): Promise<ScheduleResponse[]> {
+    const params = new URLSearchParams();
+    if (userIdentifier) params.set('user_identifier', userIdentifier);
+    if (activeOnly) params.set('active_only', 'true');
+    const qs = params.toString();
+    return request<ScheduleResponse[]>(`/schedules${qs ? `?${qs}` : ''}`);
+  },
+
+  async createSchedule(payload: ScheduleCreateRequest, userIdentifier = 'default'): Promise<ScheduleResponse> {
+    return request<ScheduleResponse>(`/schedules?user_identifier=${encodeURIComponent(userIdentifier)}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getSchedule(scheduleId: string): Promise<ScheduleResponse> {
+    return request<ScheduleResponse>(`/schedules/${encodeURIComponent(scheduleId)}`);
+  },
+
+  async updateSchedule(scheduleId: string, payload: ScheduleUpdateRequest): Promise<ScheduleResponse> {
+    return request<ScheduleResponse>(`/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteSchedule(scheduleId: string): Promise<{ status: string; message: string }> {
+    return request<{ status: string; message: string }>(`/schedules/${encodeURIComponent(scheduleId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async triggerScheduleNow(scheduleId: string): Promise<ScheduleTriggerResponse> {
+    return request<ScheduleTriggerResponse>(`/schedules/${encodeURIComponent(scheduleId)}/trigger-now`, {
+      method: 'POST',
+    });
+  },
+
+  async getScheduleLogs(scheduleId: string, limit = 20): Promise<ScheduleExecutionLogResponse[]> {
+    return request<ScheduleExecutionLogResponse[]>(`/schedules/${encodeURIComponent(scheduleId)}/logs?limit=${limit}`);
   },
 };
 

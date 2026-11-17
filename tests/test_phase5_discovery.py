@@ -248,6 +248,103 @@ async def test_api_lead_discovery_endpoint():
 
             assert len(data["direct_linkedin_search_urls"]) > 0
             assert "/api/v1/leads/2114892483288309550/export" in data["excel_download_url"]
+            assert data["linkedin_url_metro_keywords"] is not None
+            assert "90008587" in data["linkedin_url_metro_keywords"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_four_linkedin_url_variants_with_valid_geourns():
+    """Verify all 4 LinkedIn variants generate valid URLs with no decision-maker terms."""
+    res = geo_resolver.get_four_linkedin_variants(
+        client_name="Yaniv Zaid",
+        city="Winnipeg",
+        country="Canada",
+    )
+
+    # 1. First+Last + Metro URN
+    assert res["first_last_metro_urn_url"] != ""
+    assert "firstName=Yaniv" in res["first_last_metro_urn_url"]
+    assert "lastName=Zaid" in res["first_last_metro_urn_url"]
+    assert "90008587" in res["first_last_metro_urn_url"]
+
+    # 2. Keywords + Metro URN
+    assert res["keywords_metro_urn_url"] != ""
+    assert "keywords=Yaniv" in res["keywords_metro_urn_url"]
+    assert "Zaid" in res["keywords_metro_urn_url"]
+    assert "90008587" in res["keywords_metro_urn_url"]
+
+    # 3. Keywords + Country URN
+    assert res["keywords_country_urn_url"] != ""
+    assert "keywords=Yaniv" in res["keywords_country_urn_url"]
+    assert "Zaid" in res["keywords_country_urn_url"]
+    assert "101174742" in res["keywords_country_urn_url"]
+
+    # 4. Name + Location text
+    assert res["name_location_text_url"] != ""
+    assert "Yaniv" in res["name_location_text_url"]
+    assert "Winnipeg" in res["name_location_text_url"]
+
+    # Invariant: Strictly no decision-maker roles in any URL
+    for key, url in res.items():
+        assert "CTO" not in url
+        assert "CEO" not in url
+        assert "Founder" not in url
+        assert "Decision" not in url
+
+
+def test_four_linkedin_url_variants_blank_when_no_geourn():
+    """Verify variants 1, 2, 3 remain strictly blank when city/country have no mapped GeoURN."""
+    res = geo_resolver.get_four_linkedin_variants(
+        client_name="Alice Wonderland",
+        city="UnknownTown123",
+        country="Atlantis",
+    )
+
+    # Metro URN variants must be completely blank
+    assert res["first_last_metro_urn_url"] == ""
+    assert res["keywords_metro_urn_url"] == ""
+
+    # Country URN variant must be completely blank
+    assert res["keywords_country_urn_url"] == ""
+
+    # Location text fallback contains location strings
+    assert res["name_location_text_url"] != ""
+    assert "Alice" in res["name_location_text_url"]
+    assert "Wonderland" in res["name_location_text_url"]
+    assert "UnknownTown123" in res["name_location_text_url"]
+
+
+def test_four_linkedin_url_variants_all_blank_when_no_location():
+    """Verify all 4 variants are strictly blank when client has no location information."""
+    res = geo_resolver.get_four_linkedin_variants(
+        client_name="Bob Builder",
+        city=None,
+        country=None,
+    )
+
+    assert res["first_last_metro_urn_url"] == ""
+    assert res["keywords_metro_urn_url"] == ""
+    assert res["keywords_country_urn_url"] == ""
+    assert res["name_location_text_url"] == ""
+
+
+def test_four_linkedin_url_variants_single_name_handling():
+    """Verify single-word name leaves variant 1 blank while generating variants 2, 3, 4."""
+    res = geo_resolver.get_four_linkedin_variants(
+        client_name="Yaniv",
+        city="Winnipeg",
+        country="Canada",
+    )
+
+    # Variant 1 requires first & last name -> must be blank
+    assert res["first_last_metro_urn_url"] == ""
+
+    # Variants 2, 3, 4 work with single name
+    assert res["keywords_metro_urn_url"] != ""
+    assert "90008587" in res["keywords_metro_urn_url"]
+    assert res["keywords_country_urn_url"] != ""
+    assert "101174742" in res["keywords_country_urn_url"]
+    assert res["name_location_text_url"] != ""
+
 

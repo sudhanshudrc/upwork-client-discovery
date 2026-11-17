@@ -18,6 +18,7 @@ from app.services.excel_export_service import (
     ExcelExportService,
     excel_export_service,
     format_client_name,
+    format_company_name,
     generate_sales_pitch_hook,
 )
 
@@ -74,6 +75,32 @@ def test_format_client_name_multi_and_single():
         confirmed_client_name='["Alice", "Bob"]',
     )
     assert format_client_name(intel_json_multi) == '["Alice", "Bob"]'
+
+
+def test_format_company_name_multi_and_single():
+    """Verify format_company_name returns JSON list for multiple company names and string for single."""
+    intel_none = None
+    assert format_company_name(intel_none) == ""
+
+    intel_single = ClientIntelligence(
+        confirmed_company_name="Tilt",
+    )
+    assert format_company_name(intel_single) == "Tilt"
+
+    intel_multi = ClientIntelligence(
+        confirmed_company_name="Tilt, Acme Corp",
+    )
+    assert format_company_name(intel_multi) == '["Tilt", "Acme Corp"]'
+
+    intel_json_multi = ClientIntelligence(
+        confirmed_company_name='["Google", "DeepMind"]',
+    )
+    assert format_company_name(intel_json_multi) == '["Google", "DeepMind"]'
+
+    intel_json_single = ClientIntelligence(
+        confirmed_company_name='["Tilt"]',
+    )
+    assert format_company_name(intel_json_single) == "Tilt"
 
 
 def test_generate_leads_workbook_structure_and_styling(tmp_path: Path):
@@ -138,9 +165,9 @@ def test_generate_leads_workbook_structure_and_styling(tmp_path: Path):
     wb = openpyxl.load_workbook(saved_path)
     ws = wb.active
 
-    # Check Total Columns: strictly 34
-    assert len(COLUMNS_SPEC) == 34
-    assert ws.max_column == 34
+    # Check Total Columns: strictly 38 (34 standard + 4 LinkedIn URLs)
+    assert len(COLUMNS_SPEC) == 38
+    assert ws.max_column == 38
 
     # Row 1: Title
     assert "Upwork Job Leads" in ws.cell(1, 1).value
@@ -157,7 +184,11 @@ def test_generate_leads_workbook_structure_and_styling(tmp_path: Path):
     assert ws.cell(3, 18).value == "Total Spent ($)"
     assert ws.cell(3, 25).value == "Timezone / Local Time"
     assert ws.cell(3, 27).value == "Client Name"
-    assert ws.cell(3, 34).value == "Full Job Description"
+    assert ws.cell(3, 34).value == "LI Metro Name URL"
+    assert ws.cell(3, 35).value == "LI Metro Keyword URL"
+    assert ws.cell(3, 36).value == "LI Country URL"
+    assert ws.cell(3, 37).value == "LI Location Fallback URL"
+    assert ws.cell(3, 38).value == "Full Job Description"
 
     # Data Rows: Exactly 1 row per job (Row 4)
     assert ws.max_row == 4
@@ -170,9 +201,34 @@ def test_generate_leads_workbook_structure_and_styling(tmp_path: Path):
     assert "%" in ws.cell(4, 19).value  # Hire Rate
     assert ws.cell(4, 27).value == '["Yaniv", "Sarah"]'  # Multi-name formatted as JSON list
     assert ws.cell(4, 31).value == "Tilt"
-    assert ws.cell(4, 34).value == "Developing scalable Tilt web application."
 
-    # Verify Raw URL cells have hyperlinks
+    # Verify LinkedIn URL Columns
+    # Variant 1: Single name 'Yaniv' without last name -> blank / empty cell
+    assert ws.cell(4, 34).value in ("", None)
+    assert ws.cell(4, 34).hyperlink is None
+
+    # Variant 2: Winnipeg Metro GeoURN (90008587)
+    li_metro_cell = ws.cell(4, 35)
+    assert "keywords=Yaniv" in li_metro_cell.value
+    assert "90008587" in li_metro_cell.value
+    assert li_metro_cell.hyperlink.target.startswith("https://www.linkedin.com")
+
+    # Variant 3: Canada Country GeoURN (101174742)
+    li_country_cell = ws.cell(4, 36)
+    assert "keywords=Yaniv" in li_country_cell.value
+    assert "101174742" in li_country_cell.value
+    assert li_country_cell.hyperlink.target.startswith("https://www.linkedin.com")
+
+    # Variant 4: Name + Location text
+    li_loc_cell = ws.cell(4, 37)
+    assert "Yaniv" in li_loc_cell.value
+    assert "Winnipeg" in li_loc_cell.value
+    assert li_loc_cell.hyperlink.target.startswith("https://www.linkedin.com")
+
+    # Column 38 (End of columns): Full Job Description
+    assert ws.cell(4, 38).value == "Developing scalable Tilt web application."
+
+    # Verify Raw Job URL cell has hyperlink
     job_url_cell = ws.cell(4, 2)
     assert job_url_cell.value.startswith("https://www.upwork.com")
     assert job_url_cell.hyperlink.target.startswith("https://www.upwork.com")

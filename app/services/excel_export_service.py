@@ -20,6 +20,7 @@ from app.models.client import Client
 from app.models.intelligence import ClientIntelligence
 from app.models.job import Job
 from app.models.search_run import SearchRun
+from app.services.geo_resolver_service import geo_resolver
 
 logger = logging.getLogger("app.services.excel")
 
@@ -76,6 +77,10 @@ COLUMNS_SPEC = [
     {"id": "company_name", "title": "Company Name", "width": 20, "type": "text"},
     {"id": "company_evidence", "title": "Company Evidence Snippet", "width": 38, "type": "text"},
     {"id": "is_agency", "title": "Is Agency", "width": 13, "type": "bool"},
+    {"id": "linkedin_url_metro_name", "title": "LI Metro Name URL", "width": 45, "type": "url"},
+    {"id": "linkedin_url_metro_keywords", "title": "LI Metro Keyword URL", "width": 45, "type": "url"},
+    {"id": "linkedin_url_country_keywords", "title": "LI Country URL", "width": 45, "type": "url"},
+    {"id": "linkedin_url_text_fallback", "title": "LI Location Fallback URL", "width": 45, "type": "url"},
     {"id": "job_description", "title": "Full Job Description", "width": 55, "type": "text"},
 ]
 
@@ -109,6 +114,38 @@ def format_client_name(intel: Optional[ClientIntelligence]) -> str:
         return json.dumps(names)
     elif len(names) == 1:
         return names[0]
+    return ""
+
+
+def format_company_name(intel: Optional[ClientIntelligence]) -> str:
+    """
+    Formats mined company name according to specification:
+    - If multiple companies exist, returns JSON list string e.g. ["company1", "company2"]
+    - If single company exists, returns the string directly e.g. "company1"
+    - If no company exists, returns empty string.
+    """
+    if not intel or not intel.confirmed_company_name:
+        return ""
+
+    raw = intel.confirmed_company_name.strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                clean_list = [str(p).strip() for p in parsed if str(p).strip()]
+                if len(clean_list) > 1:
+                    return json.dumps(clean_list)
+                elif len(clean_list) == 1:
+                    return clean_list[0]
+                return ""
+        except Exception:
+            pass
+
+    companies = [c.strip() for c in raw.split(",") if c.strip()]
+    if len(companies) > 1:
+        return json.dumps(companies)
+    elif len(companies) == 1:
+        return companies[0]
     return ""
 
 
@@ -159,6 +196,25 @@ class ExcelExportService:
             posted_rel = str(getattr(job, "_posted_time_raw"))
 
         client_name_val = format_client_name(intel)
+        company_name_val = format_company_name(intel)
+
+        # Generate 4 LinkedIn Direct In-App URL Variants
+        primary_name = client_name_val
+        if primary_name.startswith("["):
+            try:
+                parsed_names = json.loads(primary_name)
+                if parsed_names and isinstance(parsed_names, list):
+                    primary_name = str(parsed_names[0])
+            except Exception:
+                pass
+
+        city = client.city if client else None
+        country = client.country if client else None
+        li_urls = geo_resolver.get_four_linkedin_variants(
+            client_name=primary_name,
+            city=city,
+            country=country,
+        )
 
         return {
             "job_title": job.title or "",
@@ -191,10 +247,14 @@ class ExcelExportService:
             "client_name_confidence": float(intel.name_confidence) if intel and intel.name_confidence is not None else None,
             "client_name_mentions": intel.name_mentions_count if intel else 0,
             "client_name_evidence": intel.name_evidence_snippet if intel else "",
-            "company_name": intel.confirmed_company_name if intel else "",
+            "company_name": company_name_val,
             "company_evidence": intel.company_evidence_snippet if intel else "",
             "is_agency": intel.is_agency if intel else False,
             "job_description": job.description or "",
+            "linkedin_url_metro_name": li_urls["first_last_metro_urn_url"],
+            "linkedin_url_metro_keywords": li_urls["keywords_metro_urn_url"],
+            "linkedin_url_country_keywords": li_urls["keywords_country_urn_url"],
+            "linkedin_url_text_fallback": li_urls["name_location_text_url"],
         }
 
     def generate_leads_workbook(
@@ -211,21 +271,23 @@ class ExcelExportService:
         ws.title = "Job Leads & Intelligence"
         ws.views.sheetView[0].showGridLines = True
 
-        # 1. Title Block (Row 1) - merged across 34 columns (A1:AH1)
-        ws.merge_cells("A1:AH1")
+        last_col = get_column_letter(len(COLUMNS_SPEC))
+
+        # 1. Title Block (Row 1) - merged across all columns
+        ws.merge_cells(f"A1:{last_col}1")
         title_cell = ws["A1"]
         title_cell.value = "Upwork Job Leads & Client Intelligence Master Export"
         title_cell.font = TITLE_FONT
         title_cell.alignment = Alignment(vertical="center", indent=1)
         ws.row_dimensions[1].height = 34
 
-        # 2. Subtitle / Metadata Block (Row 2) - merged across 34 columns (A2:AH2)
-        ws.merge_cells("A2:AH2")
+        # 2. Subtitle / Metadata Block (Row 2) - merged across all columns
+        ws.merge_cells(f"A2:{last_col}2")
         sub_cell = ws["A2"]
         sub_cell.value = (
             f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} | "
             f"Total Jobs Exported: {len(jobs)} | "
-            "Master 34-Column Intelligence Specification"
+            f"Master {len(COLUMNS_SPEC)}-Column Intelligence Specification"
         )
         sub_cell.font = SUBTITLE_FONT
         sub_cell.alignment = Alignment(vertical="center", indent=1)

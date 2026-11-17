@@ -44,12 +44,22 @@ export function SessionImportDialog({
   onProfileChange,
 }: SessionImportDialogProps) {
   const [cookieJson, setCookieJson] = React.useState<string>('');
+  const [decryptPassword, setDecryptPassword] = React.useState<string>('Drc@1234');
   const [isImporting, setIsImporting] = React.useState<boolean>(false);
   const [isVerifying, setIsVerifying] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
   const [verifyFeedback, setVerifyFeedback] = React.useState<VerificationFeedback | null>(null);
 
   const cleanUser = currentProfile || 'default';
+
+  const isEncryptedCookieFile = React.useMemo(() => {
+    try {
+      const obj = JSON.parse(cookieJson.trim());
+      return obj && typeof obj === 'object' && obj.version === 2 && typeof obj.data === 'string';
+    } catch {
+      return false;
+    }
+  }, [cookieJson]);
 
   // Clear state when dialog opens or profile changes
   React.useEffect(() => {
@@ -69,6 +79,11 @@ export function SessionImportDialog({
       return;
     }
 
+    if (isEncryptedCookieFile && !decryptPassword.trim()) {
+      setError('This cookie file is encrypted with a password. Please enter the decryption password.');
+      return;
+    }
+
     let parsedData: unknown;
     try {
       parsedData = JSON.parse(trimmedInput);
@@ -84,7 +99,11 @@ export function SessionImportDialog({
 
     setIsImporting(true);
     try {
-      const result = await api.importSession(cleanUser, parsedData);
+      const result = await api.importSession(
+        cleanUser,
+        parsedData,
+        isEncryptedCookieFile ? decryptPassword.trim() : undefined
+      );
       onProfileChange?.(cleanUser);
       onImportSuccess(result, cleanUser);
       setCookieJson('');
@@ -118,7 +137,11 @@ export function SessionImportDialog({
           }
         }
         if (parsedData) {
-          await api.importSession(cleanUser, parsedData);
+          await api.importSession(
+            cleanUser,
+            parsedData,
+            isEncryptedCookieFile ? decryptPassword.trim() : undefined
+          );
           setCookieJson('');
         }
       }
@@ -271,6 +294,23 @@ export function SessionImportDialog({
               className="w-full rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] p-3 text-xs font-mono text-[#3D4127] dark:text-[#F8F9F3] outline-none border focus:border-[#636B2F] focus:ring-1 focus:ring-[#636B2F]"
             />
           </div>
+
+          {/* Decryption Password Field (Auto-detected for encrypted exports) */}
+          {isEncryptedCookieFile && (
+            <div className="space-y-1.5 p-3 rounded-lg border border-[#BAC095] dark:border-[#4A5129] bg-[#F8F9F3] dark:bg-[#1C2012]">
+              <label className="text-xs font-semibold text-[#4D5333] dark:text-[#DCE1C4] flex items-center justify-between">
+                <span>Decryption Password</span>
+                <span className="text-[10px] text-[#656C43] dark:text-[#BAC095]">Encrypted Cookie-Editor v2 detected</span>
+              </label>
+              <input
+                type="password"
+                value={decryptPassword}
+                onChange={(e) => setDecryptPassword(e.target.value)}
+                placeholder="Enter password (e.g. Drc@1234)"
+                className="w-full rounded-md border border-[#BAC095] dark:border-[#4A5129] bg-white dark:bg-[#15180E] px-3 py-1.5 text-xs text-[#3D4127] dark:text-[#F8F9F3] outline-none focus:border-[#636B2F]"
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">

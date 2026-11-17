@@ -43,6 +43,7 @@ async def test_e2e_single_job_pipeline_execution(tmp_path: Path):
             session=session,
             auto_confirm=True,
             apply_delay=False,
+            harvest_candidates=True,
         )
 
         assert result["status"] == "COMPLETED"
@@ -132,6 +133,7 @@ async def test_e2e_fastapi_gateway_routes():
                 "job_url": "https://www.upwork.com/jobs/~022114892483288309550",
                 "auto_confirm": True,
                 "apply_delay": False,
+                "harvest_candidates": True,
             }
             resp_run = test_client.post("/api/v1/pipelines/job-run", json=payload)
             assert resp_run.status_code == 200, resp_run.text

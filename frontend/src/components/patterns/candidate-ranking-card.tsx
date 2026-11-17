@@ -42,49 +42,44 @@ function parseSearchQuery(rawUrl: string, index: number): SearchQueryMeta {
 
     if (isLinkedIn) {
       const keywords = parsed.searchParams.get('keywords') || '';
-      const geoUrn = parsed.searchParams.get('geoUrn');
+      const geoUrn = parsed.searchParams.get('geoUrn') || '';
       const firstName = parsed.searchParams.get('firstName') || '';
       const lastName = parsed.searchParams.get('lastName') || '';
 
-      if (geoUrn) {
+      // Variant 1: First+Last Name + Metro GeoURN
+      if (firstName && lastName && geoUrn) {
         return {
-          label: `Target Metro Search (#${index + 1})`,
-          badge: 'Metro Filter',
+          label: 'First+Last Name + Metro GeoURN',
+          badge: 'Metro Name',
           badgeVariant: 'tier-a',
-          description: `Direct LinkedIn search filtered by client verified metro area`,
+          description: `Direct LinkedIn search by first & last name in client's verified metro area`,
           url: rawUrl,
-          queryParamText: keywords || `${firstName} ${lastName}`.trim(),
+          queryParamText: `${firstName} ${lastName}`,
         };
       }
 
+      // Variant 2 & 3: Keywords with GeoURN (Metro vs Country)
+      if (geoUrn) {
+        const isMetro = geoUrn.includes('9000') || geoUrn.includes('106155005');
+        return {
+          label: isMetro ? 'Keywords + Metro GeoURN' : 'Keywords + Country GeoURN',
+          badge: isMetro ? 'Metro Keywords' : 'Country Keywords',
+          badgeVariant: isMetro ? 'tier-a' : 'brand',
+          description: isMetro
+            ? `Direct LinkedIn search by keywords filtered by verified metro area`
+            : `Direct LinkedIn search by keywords filtered by verified country`,
+          url: rawUrl,
+          queryParamText: decodeURIComponent(keywords).trim(),
+        };
+      }
+
+      // Variant 4: Name + Location Text Fallback
       const decodedKeywords = decodeURIComponent(keywords).trim();
-      const parts = decodedKeywords.split(/\s+/);
-
-      if (parts.length >= 3) {
-        return {
-          label: `Name + Region Search (#${index + 1})`,
-          badge: 'Regional',
-          badgeVariant: 'brand',
-          description: `Direct LinkedIn search matching name and regional location`,
-          url: rawUrl,
-          queryParamText: decodedKeywords,
-        };
-      } else if (parts.length === 2 && index >= 2) {
-        return {
-          label: `Name + City Search (#${index + 1})`,
-          badge: 'City Filter',
-          badgeVariant: 'brand',
-          description: `Direct LinkedIn search matching client name and city`,
-          url: rawUrl,
-          queryParamText: decodedKeywords,
-        };
-      }
-
       return {
-        label: `Direct Name Search (#${index + 1})`,
-        badge: 'Direct Name',
+        label: 'Name + Location Text Fallback',
+        badge: 'Location Text',
         badgeVariant: 'neutral',
-        description: `Direct LinkedIn lookup for "${decodedKeywords || 'candidate'}"`,
+        description: `Direct LinkedIn search matching client name and location keywords`,
         url: rawUrl,
         queryParamText: decodedKeywords,
       };
@@ -149,6 +144,7 @@ export function CandidateRankingCard({
   }
 
   const { resolved_candidate, potential_candidates = [], direct_linkedin_search_urls = [] } = discoveryData;
+  const validDirectUrls = direct_linkedin_search_urls.filter((u) => Boolean(u) && u.trim().length > 0);
 
   return (
     <div className="space-y-4">
@@ -212,7 +208,11 @@ export function CandidateRankingCard({
         </div>
       ) : (
         <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs text-slate-600 dark:text-slate-400">
-          No public search profiles could be automatically matched yet. You can click any of the {direct_linkedin_search_urls.length} targeted search queries below to inspect decision-makers directly on LinkedIn.
+          {validDirectUrls.length > 0 ? (
+            <>Targeted LinkedIn direct URLs are available below. Click any of the {validDirectUrls.length} search links to inspect profiles directly on LinkedIn.</>
+          ) : (
+            <>No direct LinkedIn search links could be constructed for this client location.</>
+          )}
         </div>
       )}
 
@@ -280,11 +280,11 @@ export function CandidateRankingCard({
       )}
 
       {/* Direct LinkedIn Search Actions */}
-      {direct_linkedin_search_urls && direct_linkedin_search_urls.length > 0 && (
+      {validDirectUrls.length > 0 && (
         <div className="space-y-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">
-              Direct LinkedIn Searches ({direct_linkedin_search_urls.length})
+              Direct LinkedIn Searches ({validDirectUrls.length})
             </span>
             <span className="text-[11px] text-slate-500">
               Click any search to verify profiles directly
@@ -292,7 +292,7 @@ export function CandidateRankingCard({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {direct_linkedin_search_urls.map((rawUrl, idx) => {
+            {validDirectUrls.map((rawUrl, idx) => {
               const info = parseSearchQuery(rawUrl, idx);
               return (
                 <a

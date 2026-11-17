@@ -329,13 +329,18 @@ async def list_dashboard_clients(
 
         tier_a = next((c for c in cand_summaries if c.match_score >= 70.0 or "Tier A" in c.tier), None)
 
-        # Generate in-app LinkedIn & Google X-Ray search query URLs
+        # Generate in-app LinkedIn search query URLs (4 discrete variants)
+        url_variants = geo_resolver.get_four_linkedin_variants(
+            client_name=cname,
+            city=city,
+            country=country,
+        )
         variants = geo_resolver.generate_search_variants(
             client_name=cname,
             city=city,
             country=country,
         )
-        direct_search_urls = [v["url"] for v in variants]
+        direct_search_urls = [v["url"] for v in variants if v.get("url")]
 
         origin_job = OriginJobSummary(
             id=str(job.id),
@@ -350,7 +355,7 @@ async def list_dashboard_clients(
                 client_id=str(job.client.id),
                 client_name=cname,
                 company_name=company,
-                target_role=role,
+                target_role=None,
                 origin_job=origin_job,
                 location=loc_str,
                 total_spent_usd=float(job.client.total_spent_usd or 0),
@@ -361,6 +366,10 @@ async def list_dashboard_clients(
                 tier_a_candidate=tier_a,
                 candidates=cand_summaries,
                 direct_search_urls=direct_search_urls,
+                linkedin_url_metro_name=url_variants["first_last_metro_urn_url"],
+                linkedin_url_metro_keywords=url_variants["keywords_metro_urn_url"],
+                linkedin_url_country_keywords=url_variants["keywords_country_urn_url"],
+                linkedin_url_text_fallback=url_variants["name_location_text_url"],
             )
         )
 

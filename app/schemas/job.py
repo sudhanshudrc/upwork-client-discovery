@@ -13,7 +13,7 @@ class JobSearchQuery(BaseModel):
     """Query parameters for Upwork feed search."""
 
     query: str = Field("automation", description="Search keyword query")
-    limit: int = Field(15, ge=1, le=50, description="Number of jobs to extract")
+    limit: int = Field(20, ge=1, le=50, description="Number of jobs to extract")
     expand_history: bool = Field(True, description="Whether to expand 30+ history contracts")
     force_live: bool = Field(False, description="Bypass local cache and fetch fresh live DOM")
     user_identifier: Optional[str] = Field(None, description="Optional user identifier for multi-tenant sessions")

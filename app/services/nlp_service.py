@@ -32,6 +32,17 @@ TECH_STOPWORDS = {
     "english", "russian", "spanish", "german", "french", "developer", "engineer",
     "ecs", "ecr", "fargate", "lambda", "s3", "iam", "kms", "cloudwatch", "terraform",
     "genai", "rest", "graphql", "travel", "emea", "amazon", "google", "microsoft",
+    "crm", "erp", "saas",
+}
+
+# Action verbs commonly misclassified by NER as organizations
+ACTION_VERB_STOPWORDS = {
+    "prepare", "help", "review", "manage", "run", "develop", "deliver",
+    "create", "build", "support", "provide", "lead", "coordinate",
+    "ensure", "assist", "maintain", "test", "write", "hire", "find",
+    "onboard", "message", "hand", "send", "track", "collect", "submit",
+    "note", "give", "refine", "document", "work", "join", "start",
+    "looking", "seeking", "wanted", "needed", "need", "want",
 }
 
 # Role titles and job descriptors to never extract as company names
@@ -129,13 +140,55 @@ class UpworkNLPService:
     def extract_client_names(
         self,
         contracts: List[Dict[str, Any]],
+        job_description: Optional[str] = None,
     ) -> List[DiscoveredEntityItem]:
         """
         Analyzes partitioned review text strictly prior to 'To freelancer:'
         using both linguistic regex anchors and spaCy NER dependency trees.
+        Also parses explicit sign-offs or self-introductions in the job description.
         Extracts single or multiple personal client names mentioned in feedback.
         """
         name_stats: Dict[str, Dict[str, Any]] = {}
+
+        # 1. Job Description Sign-offs and Self-Introductions
+        if job_description:
+            # Pattern A: Sign-offs at the end of the post (e.g. 'Best, Sarah', 'Thanks, David')
+            signoff_matches = re.findall(
+                r"(?:(?:thanks|thank\s+you|regards|best\s+regards|best|cheers|sincerely|warmly)\s*[,:\n\-]\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+                job_description,
+                re.IGNORECASE,
+            )
+            for m in signoff_matches:
+                cand = self.clean_name(m)
+                if self.is_valid_person_name(cand):
+                    if cand not in name_stats:
+                        name_stats[cand] = {
+                            "name": cand,
+                            "source": "job_description_signoff",
+                            "count": 1,
+                            "evidence": f"Job description sign-off: '{cand}'",
+                        }
+                    else:
+                        name_stats[cand]["count"] += 1
+
+            # Pattern B: Introductions ('My name is [Name]', 'I am [Name], founder of...')
+            intro_matches = re.findall(
+                r"(?:my\s+name\s+is|i\s+am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b",
+                job_description,
+                re.IGNORECASE,
+            )
+            for m in intro_matches:
+                cand = self.clean_name(m)
+                if self.is_valid_person_name(cand):
+                    if cand not in name_stats:
+                        name_stats[cand] = {
+                            "name": cand,
+                            "source": "job_description_introduction",
+                            "count": 1,
+                            "evidence": f"Job description self-introduction: '{cand}'",
+                        }
+                    else:
+                        name_stats[cand]["count"] += 1
 
         for c in contracts:
             review = c.get("freelancer_review_clean") or c.get("review")
@@ -277,14 +330,21 @@ class UpworkNLPService:
         person_names_lower = {p.lower() for p in (person_names or [])}
         org_stats: Dict[str, Dict[str, Any]] = {}
 
-        # 1. spaCy ORG on Job Description
+        # 1. spaCy ORG and PRODUCT on Job Description
         if job_description:
             doc = self.nlp(job_description)
             for ent in doc.ents:
-                if ent.label_ == "ORG":
-                    name = ent.text.strip()
+                if ent.label_ in ("ORG", "PRODUCT"):
+                    if ent.root.pos_ in ("VERB", "AUX", "PUNCT", "DET", "ADV"):
+                        continue
+                    raw_name = ent.text.strip()
+                    if raw_name.lower().startswith("the "):
+                        raw_name = raw_name[4:].strip()
+                    name = raw_name
                     words = [w.lower() for w in re.findall(r"[A-Za-z]+", name)]
                     if not words or len(name) < 3 or len(words) > 5:
+                        continue
+                    if any(w in ACTION_VERB_STOPWORDS for w in words):
                         continue
                     # Exclude job titles, seniority levels, and tech roles
                     if any(w in ROLE_STOPWORDS for w in words):
@@ -303,7 +363,7 @@ class UpworkNLPService:
                             org_stats[name] = {
                                 "name": name,
                                 "source": "job_description_spacy_org",
-                                "evidence": ent.sent.text.strip()[:140],
+                                "evidence": ent.sent.text.strip()[:140] if ent.sent else "",
                                 "confidence": Decimal("85.00"),
                             }
 
@@ -364,7 +424,7 @@ class UpworkNLPService:
         agency detection, snapshot persistence, and database upsert.
         """
         # 1. Extract Client Names (supports single or multiple top decision makers)
-        client_names = self.extract_client_names(contracts)
+        client_names = self.extract_client_names(contracts, job_description=job_description)
 
         # Select top decision makers:
         # Include top candidate, plus additional candidates if they have strong mentions or multi-client parity
@@ -406,10 +466,25 @@ class UpworkNLPService:
             past_titles=past_titles,
             person_names=person_str_list,
         )
-        suggested_company = org_names[0].name if org_names else None
+
+        suggested_company_names: List[str] = []
+        if org_names:
+            top_org = org_names[0]
+            suggested_company_names.append(top_org.name)
+            for o in org_names[1:]:
+                if len(suggested_company_names) >= 3:
+                    break
+                if o.confidence >= Decimal("80.00"):
+                    suggested_company_names.append(o.name)
+
+        suggested_company = (
+            suggested_company_names[0]
+            if len(suggested_company_names) == 1
+            else (", ".join(suggested_company_names) if suggested_company_names else None)
+        )
         top_company_evidence = org_names[0].supporting_context if org_names else None
         logger.info(
-            f"[NLP] Organization mining: {len(org_names)} candidate(s) found. Top candidate: '{suggested_company}'"
+            f"[NLP] Organization mining: {len(org_names)} candidate(s) found. Top candidate(s): {suggested_company_names}"
         )
 
         # 3. Agency Detection
@@ -427,6 +502,7 @@ class UpworkNLPService:
             suggested_client_name=suggested_client,
             suggested_client_names=suggested_client_names,
             suggested_company_name=suggested_company,
+            suggested_company_names=suggested_company_names,
             suggested_role="CTO",
             client_name_candidates=client_names,
             company_candidates=org_names,
@@ -490,23 +566,37 @@ class UpworkNLPService:
         res = await session.execute(stmt)
         db_intel = res.scalars().first()
 
+        clean_name = confirmation.confirmed_client_name.strip()
+        clean_company = confirmation.confirmed_company_name.strip() if confirmation.confirmed_company_name else None
+        clean_role = confirmation.target_role.strip() if confirmation.target_role else "CTO"
+        is_agency_val = bool(getattr(confirmation, "is_agency", False))
+
         if not db_intel:
             db_intel = ClientIntelligence(
                 job_id=confirmation.job_id,
-                confirmed_client_name=confirmation.confirmed_client_name,
-                confirmed_company_name=confirmation.confirmed_company_name,
-                target_role=confirmation.target_role,
+                confirmed_client_name=clean_name,
+                confirmed_company_name=clean_company,
+                target_role=clean_role,
+                is_agency=is_agency_val,
+                name_confidence=Decimal("100.00"),
+                name_mentions_count=1,
+                name_evidence_snippet="User verified via Edit Details",
                 approval_status="APPROVED",
             )
             session.add(db_intel)
         else:
-            db_intel.confirmed_client_name = confirmation.confirmed_client_name
-            db_intel.confirmed_company_name = confirmation.confirmed_company_name
-            db_intel.target_role = confirmation.target_role
+            db_intel.confirmed_client_name = clean_name
+            db_intel.confirmed_company_name = clean_company
+            db_intel.target_role = clean_role
+            db_intel.is_agency = is_agency_val
+            db_intel.name_confidence = Decimal("100.00")
             db_intel.approval_status = "APPROVED"
 
         await session.commit()
         await session.refresh(db_intel)
+        logger.info(
+            f"[NLP] Confirmed client intelligence for job {confirmation.job_id}: Client='{clean_name}', Company='{clean_company}', Role='{clean_role}'"
+        )
         return db_intel
 
 

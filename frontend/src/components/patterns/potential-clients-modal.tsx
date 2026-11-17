@@ -54,49 +54,44 @@ function parseSearchQuery(rawUrl: string, index: number): SearchQueryMeta {
 
     if (isLinkedIn) {
       const keywords = parsed.searchParams.get('keywords') || '';
-      const geoUrn = parsed.searchParams.get('geoUrn');
+      const geoUrn = parsed.searchParams.get('geoUrn') || '';
       const firstName = parsed.searchParams.get('firstName') || '';
       const lastName = parsed.searchParams.get('lastName') || '';
 
-      if (geoUrn) {
+      // Variant 1: First+Last Name + Metro GeoURN
+      if (firstName && lastName && geoUrn) {
         return {
-          label: `Target Metro Search (#${index + 1})`,
-          badge: 'Metro Filter',
+          label: 'First+Last Name + Metro GeoURN',
+          badge: 'Metro Name',
           badgeVariant: 'tier-a',
-          description: `Direct LinkedIn search filtered by client's verified metro area`,
+          description: `Direct search by first & last name in client's verified metro area`,
           url: rawUrl,
-          queryParamText: keywords || `${firstName} ${lastName}`.trim(),
+          queryParamText: `${firstName} ${lastName}`,
         };
       }
 
+      // Variant 2 & 3: Keywords with GeoURN (Metro vs Country)
+      if (geoUrn) {
+        const isMetro = geoUrn.includes('9000') || geoUrn.includes('106155005');
+        return {
+          label: isMetro ? 'Keywords + Metro GeoURN' : 'Keywords + Country GeoURN',
+          badge: isMetro ? 'Metro Keywords' : 'Country Keywords',
+          badgeVariant: isMetro ? 'tier-a' : 'brand',
+          description: isMetro
+            ? `Direct search by keywords in client's verified metro area`
+            : `Direct search by keywords in client's verified country`,
+          url: rawUrl,
+          queryParamText: decodeURIComponent(keywords).trim(),
+        };
+      }
+
+      // Variant 4: Name + Location Text Fallback
       const decodedKeywords = decodeURIComponent(keywords).trim();
-      const parts = decodedKeywords.split(/\s+/);
-
-      if (parts.length >= 3) {
-        return {
-          label: `Name + Region Search (#${index + 1})`,
-          badge: 'Name + Region',
-          badgeVariant: 'brand',
-          description: `Direct people search matching full name and country/region keyword`,
-          url: rawUrl,
-          queryParamText: decodedKeywords,
-        };
-      } else if (parts.length === 2 && index >= 2) {
-        return {
-          label: `Name + City Search (#${index + 1})`,
-          badge: 'City Facet',
-          badgeVariant: 'brand',
-          description: `Direct people search matching confirmed name and city keyword`,
-          url: rawUrl,
-          queryParamText: decodedKeywords,
-        };
-      }
-
       return {
-        label: `Worldwide Name Search (#${index + 1})`,
-        badge: 'Worldwide',
+        label: 'Name + Location Text Fallback',
+        badge: 'Location Text',
         badgeVariant: 'neutral',
-        description: `Direct unfiltered global people lookup for "${decodedKeywords || 'candidate'}"`,
+        description: `Direct search matching client name and location keywords`,
         url: rawUrl,
         queryParamText: decodedKeywords,
       };
@@ -392,49 +387,55 @@ export function PotentialClientsModal({
                   </div>
 
                   {/* Direct LinkedIn Search Queries */}
-                  {activeClient.direct_search_urls.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-[#E1E4D3] dark:border-[#2E331E]">
-                      <span className="text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
-                        Direct LinkedIn Searches ({activeClient.direct_search_urls.length})
-                      </span>
+                  {(() => {
+                    const validUrls = (activeClient.direct_search_urls || []).filter(
+                      (u) => Boolean(u) && u.trim().length > 0
+                    );
+                    if (validUrls.length === 0) return null;
+                    return (
+                      <div className="space-y-2 pt-2 border-t border-[#E1E4D3] dark:border-[#2E331E]">
+                        <span className="text-xs font-semibold text-[#3D4127] dark:text-[#F8F9F3]">
+                          Direct LinkedIn Searches ({validUrls.length})
+                        </span>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {activeClient.direct_search_urls.map((rawUrl, idx) => {
-                          const info = parseSearchQuery(rawUrl, idx);
-                          return (
-                            <a
-                              key={idx}
-                              href={info.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="group p-2.5 rounded-lg border border-[#BAC095] dark:border-[#2E331E] bg-white dark:bg-[#15180E] hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all text-left flex flex-col justify-between"
-                            >
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="font-semibold text-[11px] text-[#3D4127] dark:text-[#F8F9F3] group-hover:text-[#636B2F] dark:group-hover:text-[#D4DE95] flex items-center gap-1">
-                                  <ExternalLink className="size-3 text-[#636B2F] dark:text-[#D4DE95]" />
-                                  {info.label}
-                                </span>
-                                <Badge variant={info.badgeVariant} className="text-[9px] py-0 px-1">
-                                  {info.badge}
-                                </Badge>
-                              </div>
-                              <p className="text-[10px] text-[#656C43] dark:text-[#BAC095] mt-1 line-clamp-1">
-                                {info.description}
-                              </p>
-                              <div className="mt-1.5 pt-1.5 border-t border-[#EFF2E3] dark:border-[#2E331E] flex items-center justify-between text-[9px]">
-                                <span className="font-mono text-[#4D5333] dark:text-[#DCE1C4] truncate max-w-[130px]">
-                                  {info.queryParamText}
-                                </span>
-                                <span className="text-[#636B2F] dark:text-[#D4DE95] font-semibold group-hover:underline">
-                                  Search &rarr;
-                                </span>
-                              </div>
-                            </a>
-                          );
-                        })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {validUrls.map((rawUrl, idx) => {
+                            const info = parseSearchQuery(rawUrl, idx);
+                            return (
+                              <a
+                                key={idx}
+                                href={info.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group p-2.5 rounded-lg border border-[#BAC095] dark:border-[#2E331E] bg-white dark:bg-[#15180E] hover:border-[#636B2F] dark:hover:border-[#D4DE95] hover:shadow-sm transition-all text-left flex flex-col justify-between"
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-semibold text-[11px] text-[#3D4127] dark:text-[#F8F9F3] group-hover:text-[#636B2F] dark:group-hover:text-[#D4DE95] flex items-center gap-1">
+                                    <ExternalLink className="size-3 text-[#636B2F] dark:text-[#D4DE95]" />
+                                    {info.label}
+                                  </span>
+                                  <Badge variant={info.badgeVariant} className="text-[9px] py-0 px-1">
+                                    {info.badge}
+                                  </Badge>
+                                </div>
+                                <p className="text-[10px] text-[#656C43] dark:text-[#BAC095] mt-1 line-clamp-1">
+                                  {info.description}
+                                </p>
+                                <div className="mt-1.5 pt-1.5 border-t border-[#EFF2E3] dark:border-[#2E331E] flex items-center justify-between text-[9px]">
+                                  <span className="font-mono text-[#4D5333] dark:text-[#DCE1C4] truncate max-w-[130px]">
+                                    {info.queryParamText}
+                                  </span>
+                                  <span className="text-[#636B2F] dark:text-[#D4DE95] font-semibold group-hover:underline">
+                                    Search &rarr;
+                                  </span>
+                                </div>
+                              </a>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>

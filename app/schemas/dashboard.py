@@ -79,6 +79,10 @@ class DashboardClientItem(BaseModel):
     tier_a_candidate: Optional[DiscoveredCandidateSummary] = None
     candidates: List[DiscoveredCandidateSummary] = Field(default_factory=list)
     direct_search_urls: List[str] = Field(default_factory=list)
+    linkedin_url_metro_name: Optional[str] = None
+    linkedin_url_metro_keywords: Optional[str] = None
+    linkedin_url_country_keywords: Optional[str] = None
+    linkedin_url_text_fallback: Optional[str] = None
 
 
 class HarvestedJobItem(BaseModel):

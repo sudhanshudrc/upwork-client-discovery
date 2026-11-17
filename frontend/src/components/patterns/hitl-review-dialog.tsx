@@ -88,9 +88,9 @@ export function HitlReviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Review Client Details</DialogTitle>
+          <DialogTitle>Edit Client Details</DialogTitle>
           <DialogDescription>
-            Verify the client name and target role before searching LinkedIn.
+            Update the verified client name, company name, and role for this job in the database.
           </DialogDescription>
         </DialogHeader>
 
@@ -190,7 +190,7 @@ export function HitlReviewDialog({
             onClick={onConfirm}
             disabled={isConfirming || !clientName.trim()}
           >
-            {isConfirming ? 'Searching LinkedIn...' : 'Confirm & Search Leads'}
+            {isConfirming ? 'Saving to Database...' : 'Save Changes'}
           </Button>
         </DialogFooter>
       </DialogContent>

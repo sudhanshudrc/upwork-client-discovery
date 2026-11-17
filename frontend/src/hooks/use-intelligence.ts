@@ -22,28 +22,27 @@ export function useConfirmIntelligence() {
   const queryClient = useQueryClient();
 
   return useMutation<
-    { status: string; intelligence: ConfirmedIntelligence },
+    ConfirmedIntelligence,
     Error,
     {
-      job_id: string;
-      job_uid: string;
+      job_id?: string;
+      job_uid?: string;
       confirmed_client_name: string;
-      confirmed_company_name: string;
+      confirmed_company_name?: string;
       target_role?: string;
       is_agency?: boolean;
     }
   >({
-    mutationFn: ({ job_id, confirmed_client_name, confirmed_company_name, target_role, is_agency }) =>
-      api.confirmIntelligence({
-        job_id,
-        confirmed_client_name,
-        confirmed_company_name,
-        target_role,
-        is_agency,
-      }),
+    mutationFn: (payload) => api.confirmIntelligence(payload),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['job-details', variables.job_uid] });
-      queryClient.invalidateQueries({ queryKey: ['job-intelligence', variables.job_uid] });
+      if (variables.job_uid) {
+        queryClient.invalidateQueries({ queryKey: ['job-details', variables.job_uid] });
+        queryClient.invalidateQueries({ queryKey: ['job-intelligence', variables.job_uid] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-clients'] });
+      queryClient.invalidateQueries({ queryKey: ['harvested-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['job-domains'] });
     },
   });
 }

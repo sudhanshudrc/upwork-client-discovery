@@ -1,6 +1,7 @@
 import asyncio
 from decimal import Decimal
 import json
+import random
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 from playwright.async_api import async_playwright
 from selectolax.lexbor import LexborHTMLParser
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -461,7 +462,10 @@ def parse_job_details_html(html: str, job_url: str) -> Dict[str, Any]:
                 t = trunc_el.text(separator=" ", strip=True)
                 t = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", t, flags=re.IGNORECASE)
                 t = re.sub(r"\b(more|less)\b$", "", t, flags=re.IGNORECASE).strip()
-                clean_review = t if t and t.lower() != "no feedback given" else None
+                if excluded_praise and t in excluded_praise and t not in freelancer_review_raw:
+                    clean_review = None
+                else:
+                    clean_review = t if t and t.lower() != "no feedback given" else None
             else:
                 clean = re.sub(r"Rating is [0-9.]+ out of [0-9.]+\s*[0-9.]*\s*(stars)?", "", freelancer_review_raw).strip()
                 clean = re.sub(r"(?<=[a-zA-Z])(more|less)$", "", clean, flags=re.IGNORECASE)
@@ -527,7 +531,7 @@ class UpworkScraperService:
     async def search_feed(
         self,
         query: str = "automation",
-        limit: int = 15,
+        limit: int = 20,
         force_live: bool = False,
         session: Optional[AsyncSession] = None,
         user_identifier: Optional[str] = None,
@@ -565,12 +569,16 @@ class UpworkScraperService:
                     created_utc = created_utc.replace(tzinfo=timezone.utc)
 
                 age_seconds = (now_utc - created_utc).total_seconds()
-                if age_seconds < 3600:
+                cache_satisfies_limit = (
+                    len(latest_run.raw_jobs_payload or []) >= limit
+                    or (latest_run.target_limit is not None and latest_run.target_limit >= limit)
+                )
+                if age_seconds < 3600 and cache_satisfies_limit:
                     age_minutes = int(age_seconds // 60)
                     expires_in = max(0, int(3600 - age_seconds))
                     logger.info(
                         f"[SCRAPER] [CACHE HIT] Found active 1-hour database cache for query '{clean_query}' "
-                        f"(Run ID: {latest_run.id}, Age: {age_minutes}m, Jobs: {len(latest_run.raw_jobs_payload)}, Expires in: {expires_in}s)"
+                        f"(Run ID: {latest_run.id}, Age: {age_minutes}m, Jobs: {len(latest_run.raw_jobs_payload)}, Serving: {limit}, Expires in: {expires_in}s)"
                     )
                     cached_jobs = latest_run.raw_jobs_payload[:limit]
                     return {
@@ -586,8 +594,9 @@ class UpworkScraperService:
                     }
 
         # 2. Live Search Execution
-        search_url = f"https://www.upwork.com/nx/search/jobs/?sort=recency&q={quote_plus(clean_query)}"
-        logger.info(f"[SCRAPER] Executing live feed search for query: '{clean_query}' (user: {user_identifier or 'guest'})")
+        per_page_param = 50 if limit > 20 else (20 if limit > 10 else 10)
+        search_url = f"https://www.upwork.com/nx/search/jobs/?sort=recency&q={quote_plus(clean_query)}&per_page={per_page_param}"
+        logger.info(f"[SCRAPER] Executing live feed search for query: '{clean_query}' (limit: {limit}, user: {user_identifier or 'guest'})")
 
         auth_failed = False
         challenge_encountered = False
@@ -622,9 +631,53 @@ class UpworkScraperService:
             page_title = await page.title()
             body_text = await page.inner_text("body")
             content = await page.content()
-            await context.close()
+            jobs = parse_search_feed_html(content)
 
-            jobs = parse_search_feed_html(content)[:limit]
+            # Multi-page pagination: Fetch successive pages until the requested limit is satisfied
+            current_page = 2
+            max_pages = min(10, max(2, (limit + 9) // 10 + 1))
+            existing_uids = {j["uid"] for j in jobs}
+
+            while len(jobs) < limit and current_page <= max_pages and not auth_failed and not challenge_encountered:
+                try:
+                    logger.info(
+                        f"[SCRAPER] Collected {len(jobs)}/{limit} jobs; navigating to search page {current_page} for query '{clean_query}'..."
+                    )
+                    next_page_url = f"https://www.upwork.com/nx/search/jobs/?sort=recency&q={quote_plus(clean_query)}&per_page={per_page_param}&page={current_page}"
+                    # Human-like pacing delay before fetching next page
+                    await asyncio.sleep(random.uniform(1.5, 3.0))
+                    await page.goto(next_page_url, wait_until="domcontentloaded", timeout=30000)
+                    try:
+                        await page.wait_for_selector(
+                            "article[data-ev-job-uid], article, [data-test='JobTile']", timeout=10000
+                        )
+                        await asyncio.sleep(2)
+                    except Exception:
+                        pass
+
+                    next_content = await page.content()
+                    next_jobs = parse_search_feed_html(next_content)
+                    new_jobs_count = 0
+                    for pj in next_jobs:
+                        if pj["uid"] not in existing_uids:
+                            jobs.append(pj)
+                            existing_uids.add(pj["uid"])
+                            new_jobs_count += 1
+
+                    logger.info(
+                        f"[SCRAPER] Page {current_page} added {new_jobs_count} new job(s). Total collected: {len(jobs)}/{limit}"
+                    )
+                    if new_jobs_count == 0:
+                        logger.info(f"[SCRAPER] No additional jobs found on page {current_page}; stopping pagination.")
+                        break
+
+                    current_page += 1
+                except Exception as p_err:
+                    logger.warning(f"[SCRAPER] Search page {current_page} pagination notice: {p_err}")
+                    break
+
+            await context.close()
+            jobs = jobs[:limit]
 
             # Diagnostic checks if no jobs were found
             if not jobs:
@@ -743,9 +796,16 @@ class UpworkScraperService:
                     logger.info(f"[SCRAPER] Using cached Stage 2 snapshot: {snapshot_file.name}")
                     with open(snapshot_file, "r", encoding="utf-8") as f:
                         cached_data = json.load(f)
-                        if session:
-                            await self.sync_job_to_db(cached_data, session)
-                        return cached_data
+                        cached_hires = cached_data.get("client", {}).get("total_hires") or 0
+                        cached_contracts = len(cached_data.get("contracts", []))
+                        if cached_hires > 0 and cached_contracts == 0:
+                            logger.info(
+                                f"[SCRAPER] Cached snapshot has 0 contracts despite {cached_hires} client hires. Re-scraping live to fetch history..."
+                            )
+                        else:
+                            if session:
+                                await self.sync_job_to_db(cached_data, session)
+                            return cached_data
                 except Exception as e:
                     logger.warning(f"[SCRAPER] Failed to read cached snapshot ({e}), falling back to HTML")
             if fixture_html.exists():
@@ -767,17 +827,49 @@ class UpworkScraperService:
                     p, user_identifier=user_identifier, headless=True
                 )
                 page = await context.new_page()
+
+                # Session pre-warming to ensure authenticated session cookies are active on Upwork domain
+                try:
+                    await page.goto("https://www.upwork.com/nx/find-work/best-matches", wait_until="domcontentloaded", timeout=20000)
+                    await asyncio.sleep(1.0)
+                except Exception as warm_err:
+                    logger.debug(f"[AUTH] Session pre-warming notice: {warm_err}")
+
                 await page.goto(job_url, wait_until="domcontentloaded", timeout=45000)
                 await asyncio.sleep(2)
 
+                final_url = page.url
+                page_text = ""
+                try:
+                    page_text = await page.inner_text("body")
+                except Exception:
+                    pass
+
+                # Check if Upwork denied authenticated access or redirected to visitor apply page
+                is_unauthenticated = False
+                if "/freelance-jobs/apply/" in final_url:
+                    is_unauthenticated = True
+                elif "Log in" in page_text and "Sign up" in page_text and "Client's recent history" not in page_text:
+                    is_unauthenticated = True
+
+                if is_unauthenticated:
+                    logger.warning(
+                        f"[CLIENT HISTORY] [ACCESS DENIED] Upwork denied authenticated access for user '{user_identifier or 'default'}' "
+                        f"and redirected to public visitor URL: {final_url}. Client history and past freelancer reviews cannot be retrieved "
+                        "with the current cookies. Please re-export fresh session cookies from an active Upwork browser."
+                    )
+
                 if expand_all_history:
                     logger.info(f"[CLIENT HISTORY] [INIT] Scanning job page for client recent history: {job_url}")
-                    # Scroll down to ensure client history component triggers lazy load
+                    # Anti-bot human micro-interactions: smooth variable scroll down (300px - 700px)
                     try:
+                        scroll_down_step = random.randint(300, 700)
+                        await page.evaluate(f"window.scrollBy({{top: {scroll_down_step}, behavior: 'smooth'}})")
+                        await asyncio.sleep(random.uniform(0.8, 1.5))
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(random.uniform(0.8, 1.4))
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await asyncio.sleep(1.5)
+                        await asyncio.sleep(1.2)
                     except Exception as e:
                         logger.debug(f"[SCRAPER] Scroll trigger encountered: {e}")
 
@@ -803,6 +895,10 @@ class UpworkScraperService:
 
                     if has_history_section:
                         logger.info("[CLIENT HISTORY] [FOUND] Client recent history section detected on DOM.")
+                        # Reading dwell pause (3s - 7s) to simulate human inspection
+                        dwell_time = random.uniform(3.0, 7.0)
+                        logger.info(f"[HUMAN INTERACTION] Dwell pause {dwell_time:.1f}s on contract history elements...")
+                        await asyncio.sleep(dwell_time)
                     else:
                         if "Log in" in page_text and "Sign up" in page_text:
                             logger.warning(
@@ -839,6 +935,14 @@ class UpworkScraperService:
                         except Exception as e:
                             logger.debug(f"[SCRAPER] Pagination loop completed after {clicks} clicks: {e}")
                             break
+
+                    # Gentle scroll up (100px - 200px) before final extraction to simulate human review
+                    try:
+                        scroll_up_step = random.randint(100, 200)
+                        await page.evaluate(f"window.scrollBy({{top: -{scroll_up_step}, behavior: 'smooth'}})")
+                        await asyncio.sleep(1.0)
+                    except Exception as e:
+                        logger.debug(f"[SCRAPER] Gentle scroll up notice: {e}")
 
                 html_content = await page.content()
                 await context.close()
@@ -897,15 +1001,16 @@ class UpworkScraperService:
         raw_spent = client_data.get("total_spent_usd")
         total_spent = _to_dec(raw_spent) or Decimal("0.00")
 
-        # Check existing client by city, country, total_spent
-        query = select(Client)
-        if client_data.get("city"):
-            query = query.filter(Client.city == client_data.get("city"))
-        if client_data.get("country"):
-            query = query.filter(Client.country == client_data.get("country"))
-        query = query.filter(Client.total_spent_usd == total_spent)
-        res = await session.execute(query)
-        db_client = res.scalars().first()
+        # Check if job already exists in DB with an associated client
+        job_stmt = (
+            select(Job)
+            .filter_by(job_uid=job_uid)
+            .options(selectinload(Job.client))
+        )
+        job_res = await session.execute(job_stmt)
+        db_job = job_res.scalars().first()
+
+        db_client = db_job.client if db_job and db_job.client else None
 
         if not db_client:
             db_client = Client(
@@ -949,11 +1054,6 @@ class UpworkScraperService:
             if client_data.get("member_since") and not db_client.member_since:
                 db_client.member_since = client_data.get("member_since")
             await session.flush()
-
-        # Upsert Job
-        job_stmt = select(Job).filter_by(job_uid=job_uid)
-        job_res = await session.execute(job_stmt)
-        db_job = job_res.scalars().first()
 
         if not db_job:
             db_job = Job(
@@ -1000,7 +1100,10 @@ class UpworkScraperService:
             await session.flush()
 
         # Sync Contract History (Strict Partitioning)
-        # Delete old contracts for this client to refresh
+        # Clear existing contracts for this client before refreshing to avoid duplicates
+        await session.execute(delete(ClientContract).where(ClientContract.client_id == db_client.id))
+        await session.flush()
+
         for c in parsed.get("contracts", []):
             contract_obj = ClientContract(
                 client_id=db_client.id,

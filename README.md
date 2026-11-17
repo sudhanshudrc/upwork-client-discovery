@@ -72,7 +72,45 @@ python3 scripts/interactive_login.py --user your_email@domain.com
 ```bash
 docker compose up -d
 ```
-Access the dashboard on `http://localhost:8000`.
+Access the dashboard on `http://localhost:8000`. Docker Compose launches PostgreSQL, Redis, FastAPI, the Celery Worker, and Celery Beat.
+
+---
+
+## Celery Periodic Scheduling & Automated Email Delivery
+
+The platform supports automated background keyword searches on periodic intervals (or cron schedules), generating the sales-ready Master Excel workbook and emailing it directly to configured recipient lists.
+
+### 1. Architecture Components
+- **Redis**: In-memory broker (`redis:6379/0`) and Celery result backend (`redis:6379/1`).
+- **Celery Worker**: Executes the autonomous search ingestion, deep DOM expansion, spaCy NLP mining, and Excel workbook compilation.
+- **Celery Beat**: Background clock scheduler evaluating active schedules every 60 seconds and dispatching due tasks.
+- **Email Service**: Transmits generated `.xlsx` spreadsheets to recipients via SMTP (TLS/SSL supported). When SMTP credentials are not configured, executions operate in simulation mode without failing the pipeline.
+
+### 2. Environment Configuration (.env)
+```ini
+# Celery & Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
+
+# SMTP Email Configuration
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+SMTP_FROM_EMAIL=notifications@yourdomain.com
+SMTP_USE_TLS=true
+```
+
+### 3. Running Celery Services Locally
+```bash
+# Terminal 1: Run Celery Worker
+.venv/bin/celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+
+# Terminal 2: Run Celery Beat Scheduler
+.venv/bin/celery -A app.core.celery_app beat --loglevel=info
+```
 
 ---
 
@@ -92,6 +130,14 @@ Access the dashboard on `http://localhost:8000`.
 | `GET` | `/api/v1/leads/export` | Bulk export across all jobs with dynamic filtering (`min_spend`, `tier`) |
 | `POST` | `/api/v1/pipelines/job-run` | Executes end-to-end autonomous discovery for a single job URL |
 | `POST` | `/api/v1/pipelines/batch-run` | Triggers sequential autonomous batch runner across search feed |
+| `POST` | `/api/v1/schedules` | Creates a periodic keyword search and email delivery rule |
+| `GET` | `/api/v1/schedules` | Lists all active and inactive keyword search schedules |
+| `GET` | `/api/v1/schedules/{id}` | Retrieves details and latest run status of a schedule |
+| `PUT` | `/api/v1/schedules/{id}` | Updates keywords, limit, intervals, or recipient emails |
+| `DELETE` | `/api/v1/schedules/{id}` | Deletes a schedule and its historical execution logs |
+| `POST` | `/api/v1/schedules/{id}/trigger-now` | Triggers immediate Celery task execution for a schedule |
+| `GET` | `/api/v1/schedules/{id}/logs` | Returns historical execution audit trail for a schedule |
+
 
 ---
 

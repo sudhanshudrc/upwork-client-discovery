@@ -95,13 +95,18 @@ async def discover_decision_makers(
     city = job.client.city if job.client else None
     country = job.client.country if job.client else None
 
-    # 1. GeoURN Search Variants
+    # 1. GeoURN Search Variants (4 discrete LinkedIn In-App strategies)
     search_variants = geo_resolver.generate_search_variants(
         client_name=client_name,
         city=city,
         country=country,
     )
-    direct_search_urls = [v["url"] for v in search_variants]
+    direct_search_urls = [v["url"] for v in search_variants if v.get("url")]
+    url_variants = geo_resolver.get_four_linkedin_variants(
+        client_name=client_name,
+        city=city,
+        country=country,
+    )
 
     # 2. Harvest Candidates via SerpAPI Google X-Ray
     raw_candidates = harvester_service.harvest_candidates(
@@ -161,6 +166,10 @@ async def discover_decision_makers(
         direct_linkedin_search_urls=direct_search_urls,
         search_variants=search_variants,
         excel_download_url=f"/api/v1/leads/{job_uid}/export",
+        linkedin_url_metro_name=url_variants["first_last_metro_urn_url"],
+        linkedin_url_metro_keywords=url_variants["keywords_metro_urn_url"],
+        linkedin_url_country_keywords=url_variants["keywords_country_urn_url"],
+        linkedin_url_text_fallback=url_variants["name_location_text_url"],
     )
 
 

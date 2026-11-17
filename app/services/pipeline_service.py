@@ -48,6 +48,7 @@ class BatchPipelineRunner:
         auto_confirm: bool = True,
         apply_delay: bool = True,
         user_identifier: Optional[str] = None,
+        harvest_candidates: bool = False,
     ) -> Dict[str, Any]:
         """
         Runs the full 5-stage pipeline for an individual job:
@@ -143,8 +144,44 @@ class BatchPipelineRunner:
             city = db_job.client.city if db_job.client else None
             country = db_job.client.country if db_job.client else None
             target_role = getattr(db_job.intelligence, "target_role", "CTO") if db_job.intelligence else "CTO"
+            target_client = target_names[0] if (target_names and len(target_names) == 1) else client_name
 
-            # Step 5: LinkedIn Harvesting via SerpAPI Google X-Ray for all target names
+            # Generate LinkedIn Direct In-App URLs (4 discrete variants)
+            four_urls = geo_resolver.get_four_linkedin_variants(
+                client_name=target_client,
+                city=city,
+                country=country,
+            )
+            variants = geo_resolver.generate_search_variants(
+                client_name=target_client,
+                city=city,
+                country=country,
+            )
+            direct_search_urls = [v["url"] for v in variants if v.get("url")]
+
+            # If automated candidate harvesting is disabled, finish immediately with direct LinkedIn search URLs
+            if not harvest_candidates:
+                logger.info(
+                    f"[LINKEDIN URLS] Generated {len(direct_search_urls)} direct search URL(s) for '{target_client}' in {city}, {country}. External SerpAPI / Google X-Ray candidate harvesting bypassed."
+                )
+                return {
+                    "job_uid": db_job.job_uid,
+                    "job_title": db_job.title,
+                    "job_url": db_job.job_url,
+                    "client_name": target_client,
+                    "client_names": target_names,
+                    "company_name": company_name,
+                    "total_contracts": len(contracts),
+                    "total_candidates": 0,
+                    "primary_resolved_name": None,
+                    "primary_resolved_score": None,
+                    "direct_search_urls": direct_search_urls,
+                    "linkedin_urls": four_urls,
+                    "jitter_slept_seconds": round(jitter_slept, 2),
+                    "status": "COMPLETED",
+                }
+
+            # Step 5: LinkedIn Harvesting via SerpAPI Google X-Ray for all target names (Optional)
             logger.info(f"[STEP 5/5] Harvesting LinkedIn profiles via Google X-Ray for target(s) {target_names} in {city}, {country} (Company: {company_name})...")
             raw_candidates = []
             seen_profile_urls = set()
@@ -205,13 +242,15 @@ class BatchPipelineRunner:
                 "job_uid": db_job.job_uid,
                 "job_title": db_job.title,
                 "job_url": db_job.job_url,
-                "client_name": target_names[0] if (target_names and len(target_names) == 1) else client_name,
+                "client_name": target_client,
                 "client_names": target_names,
                 "company_name": company_name,
                 "total_contracts": len(contracts),
                 "total_candidates": len(scored_candidates),
                 "primary_resolved_name": resolved_name,
                 "primary_resolved_score": resolved_score,
+                "direct_search_urls": direct_search_urls,
+                "linkedin_urls": four_urls,
                 "jitter_slept_seconds": round(jitter_slept, 2),
                 "status": "COMPLETED",
             }
@@ -228,6 +267,7 @@ class BatchPipelineRunner:
         apply_delay: bool = True,
         session: Optional[AsyncSession] = None,
         user_identifier: Optional[str] = None,
+        harvest_candidates: bool = False,
     ) -> Dict[str, Any]:
         """
         Executes end-to-end autonomous discovery across a batch of top jobs:
@@ -284,6 +324,7 @@ class BatchPipelineRunner:
                     auto_confirm=auto_confirm,
                     apply_delay=apply_jitter,
                     user_identifier=user_identifier,
+                    harvest_candidates=harvest_candidates,
                 )
                 self._active_runs[run_id]["jobs_summary"].append(summary)
                 self._active_runs[run_id]["successful_count"] += 1

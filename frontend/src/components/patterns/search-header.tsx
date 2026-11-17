@@ -49,6 +49,8 @@ export function SearchHeader({
               <option value={3}>Limit: 3</option>
               <option value={5}>Limit: 5</option>
               <option value={10}>Limit: 10</option>
+              <option value={15}>Limit: 15</option>
+              <option value={20}>Limit: 20</option>
             </select>
 
             <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer px-2 select-none">

@@ -18,6 +18,7 @@ class BatchRunRequest(BaseModel):
     auto_confirm: bool = Field(default=True, description="Auto-confirm highest confidence client name")
     apply_delay: bool = Field(default=True, description="Apply anti-blocking jitter (8-15s)")
     user_identifier: Optional[str] = Field(default=None, description="Optional user identifier for multi-tenant sessions")
+    harvest_candidates: bool = Field(default=False, description="Whether to harvest candidates via external SerpAPI Google X-Ray")
 
 
 class SingleJobRunRequest(BaseModel):
@@ -25,6 +26,7 @@ class SingleJobRunRequest(BaseModel):
     auto_confirm: bool = Field(default=True, description="Auto-confirm highest confidence client name")
     apply_delay: bool = Field(default=False, description="Apply anti-blocking jitter")
     user_identifier: Optional[str] = Field(default=None, description="Optional user identifier for multi-tenant sessions")
+    harvest_candidates: bool = Field(default=False, description="Whether to harvest candidates via external SerpAPI Google X-Ray")
 
 
 @router.post("/batch-run")
@@ -37,9 +39,8 @@ async def trigger_batch_pipeline(
     1. Ingests top jobs from feed.
     2. Deep scrapes each job & expands 30+ contracts with anti-blocking jitter.
     3. Mines client & company names with spaCy NLP.
-    4. Harvests LinkedIn candidates via SerpAPI Google X-Ray.
-    5. Scores candidates and commits Dual Delivery (Tier A Resolved vs Potential).
-    6. Generates sales-ready Master 46-Column Excel export.
+    4. Generates direct LinkedIn search URLs.
+    5. Generates sales-ready Master Excel export.
     """
     result = await pipeline_runner.execute_batch_pipeline(
         search_query=request.search_query,
@@ -49,6 +50,7 @@ async def trigger_batch_pipeline(
         apply_delay=request.apply_delay,
         session=db,
         user_identifier=request.user_identifier,
+        harvest_candidates=request.harvest_candidates,
     )
     return result
 
@@ -67,6 +69,7 @@ async def trigger_single_job_pipeline(
         auto_confirm=request.auto_confirm,
         apply_delay=request.apply_delay,
         user_identifier=request.user_identifier,
+        harvest_candidates=request.harvest_candidates,
     )
     return result
 

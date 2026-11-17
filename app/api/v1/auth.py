@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -185,6 +185,7 @@ class SessionImportRequest(BaseModel):
     description="Accepts Playwright JSON, encrypted Cookie-Editor files, or raw cookie strings, encrypts with AES-256-GCM, and stores under the logged-in user.",
 )
 async def import_session_cookies(
+    http_request: Request,
     request: SessionImportRequest,
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -196,12 +197,14 @@ async def import_session_cookies(
     """
     eff_user = current_user.email if current_user else (request.user_identifier or "default")
     user_id = current_user.id if current_user else None
+    client_ua = http_request.headers.get("user-agent")
     try:
         result = await auth_service.save_user_session_state_async(
             user_identifier=eff_user,
             state_data=request.session_data,
             user_id=user_id,
             password=request.password,
+            user_agent=client_ua,
         )
         return result
     except Exception as e:
@@ -244,7 +247,7 @@ async def get_session_status(
     "/session/verify",
     response_model=SessionStatusResponse,
     summary="Upwork Connection Liveness Probe",
-    description="Launches a headless Playwright probe against Upwork search to test if cookies are active or blocked.",
+    description="Launches a Playwright probe against Upwork to test if cookies are active or blocked.",
 )
 @router.post(
     "/verify",
@@ -252,14 +255,18 @@ async def get_session_status(
     include_in_schema=False,
 )
 async def verify_session_liveness(
+    http_request: Request,
     user_identifier: Optional[str] = Query(None, description="Optional user identifier for unauthenticated fallback sessions"),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
-    Executes a live Playwright probe to verify that stored cookies
-    can access Upwork search without Cloudflare challenges or login redirects.
+    Executes a live probe to verify that stored cookies
+    can access Upwork without Cloudflare challenges or login redirects.
     When authenticated, strictly uses the authenticated user's cookies.
     """
     eff_user = current_user.email if current_user else (user_identifier or "default")
-    health = await auth_service.verify_session_health(headless=True, user_identifier=eff_user)
+    client_ua = http_request.headers.get("user-agent")
+    health = await auth_service.verify_session_health(
+        headless=True, user_identifier=eff_user, user_agent=client_ua
+    )
     return health

@@ -68,18 +68,47 @@ async def confirm_client_and_organization(
 ):
     """
     Human-in-the-Loop Checkpoint: Confirms or overrides the suggested client person name
-    and organization name before initiating LinkedIn discovery searches.
+    and organization name, persisting changes to PostgreSQL.
     """
-    stmt = select(Job).filter_by(id=confirmation.job_id)
-    res = await db.execute(stmt)
-    job = res.scalars().first()
+    job = None
+    if confirmation.job_id:
+        res = await db.execute(select(Job).filter_by(id=confirmation.job_id))
+        job = res.scalars().first()
+    if not job and confirmation.job_uid:
+        res = await db.execute(select(Job).filter_by(job_uid=confirmation.job_uid))
+        job = res.scalars().first()
+
+    # If job is not in DB yet (e.g. from feed search only), auto-expand/persist it
+    if not job and confirmation.job_uid:
+        from app.models.search_run import SearchRun
+        from app.services.scraper_service import scraper_service
+
+        runs_res = await db.execute(
+            select(SearchRun).where(SearchRun.status == "COMPLETED").order_by(SearchRun.created_at.desc())
+        )
+        runs = runs_res.scalars().all()
+        target_raw = None
+        for r in runs:
+            if r.raw_jobs_payload:
+                for j in r.raw_jobs_payload:
+                    if isinstance(j, dict) and j.get("uid") == confirmation.job_uid:
+                        target_raw = j
+                        break
+            if target_raw:
+                break
+
+        job_url = target_raw.get("url") if target_raw else f"https://www.upwork.com/jobs/~02{confirmation.job_uid}"
+        await scraper_service.scrape_job_details(job_url, expand_all_history=False, session=db)
+        job_res = await db.execute(select(Job).filter_by(job_uid=confirmation.job_uid))
+        job = job_res.scalars().first()
 
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job ID {confirmation.job_id} not found.",
+            detail=f"Job not found for job_id={confirmation.job_id} or job_uid={confirmation.job_uid}.",
         )
 
+    confirmation.job_id = job.id
     db_intel = await nlp_service.confirm_intelligence(confirmation, session=db)
     return db_intel
 

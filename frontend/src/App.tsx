@@ -32,6 +32,7 @@ import { JobFeedTable } from '@/components/patterns/job-feed-table';
 import { ContractHistoryCard } from '@/components/patterns/contract-history-card';
 // import { CandidateRankingCard } from '@/components/patterns/candidate-ranking-card';
 import { HitlReviewDialog } from '@/components/patterns/hitl-review-dialog';
+import { ScheduleManagerDialog } from '@/components/patterns/schedule-manager-dialog';
 import { PipelineProgressBar } from '@/components/patterns/pipeline-progress-bar';
 import { IntelligenceCard } from '@/components/patterns/intelligence-card';
 import { SearchDomainBar } from '@/components/patterns/search-domain-bar';
@@ -85,7 +86,7 @@ export function App() {
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = React.useState('Frontend Developer');
-  const [limit, setLimit] = React.useState(3);
+  const [limit, setLimit] = React.useState(20);
   const [forceLive, setForceLive] = React.useState(false);
   const [feedFilterText, setFeedFilterText] = React.useState('');
   const [jobs, setJobs] = React.useState<FeedJobItem[]>([]);
@@ -97,6 +98,7 @@ export function App() {
 
   // Review Dialog State
   const [isHitlDialogOpen, setIsHitlDialogOpen] = React.useState(false);
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = React.useState(false);
 
   // Form State for Client Review
   const [hitlClientName, setHitlClientName] = React.useState('');
@@ -139,9 +141,17 @@ export function App() {
     });
   };
 
-  // Sync client verification fields when intelligence data loads
+  // Reset verification fields and transient state whenever selected job changes
   React.useEffect(() => {
-    if (intelligence) {
+    setHitlClientName('');
+    setHitlCompanyName('');
+    setHitlRole('CTO');
+    setDiscoveryResult(null);
+  }, [selectedJobUid]);
+
+  // Sync client verification fields when intelligence data loads for the active job
+  React.useEffect(() => {
+    if (intelligence && intelligence.job_uid === selectedJobUid) {
       const defaultName =
         intelligence.suggested_client_names?.[0] ||
         intelligence.suggested_client_name?.split(',')[0]?.trim() ||
@@ -150,7 +160,22 @@ export function App() {
       if (intelligence.suggested_company_name) setHitlCompanyName(intelligence.suggested_company_name);
       if (intelligence.suggested_role) setHitlRole(intelligence.suggested_role);
     }
-  }, [intelligence]);
+  }, [intelligence, selectedJobUid]);
+
+  // Sync client verification fields from existing DB job intelligence if already confirmed
+  React.useEffect(() => {
+    if (selectedJob && selectedJob.job_uid === selectedJobUid && selectedJob.intelligence) {
+      if (selectedJob.intelligence.confirmed_client_name) {
+        setHitlClientName(selectedJob.intelligence.confirmed_client_name);
+      }
+      if (selectedJob.intelligence.confirmed_company_name) {
+        setHitlCompanyName(selectedJob.intelligence.confirmed_company_name);
+      }
+      if (selectedJob.intelligence.target_role) {
+        setHitlRole(selectedJob.intelligence.target_role);
+      }
+    }
+  }, [selectedJob, selectedJobUid]);
 
   // Synchronize detailed client rating back to feed jobs list
   React.useEffect(() => {
@@ -227,6 +252,8 @@ export function App() {
     return jobs.find((j) => j.uid === selectedJobUid) || null;
   }, [jobs, selectedJobUid]);
 
+  const isJobLoaded = Boolean(selectedJob && selectedJob.job_uid === selectedJobUid);
+
   // Expand Contract History
   const handleExpandContracts = () => {
     if (!selectedJobUid) return;
@@ -248,56 +275,34 @@ export function App() {
 
   // Open Client Review Dialog
   const handleOpenHitl = () => {
-    if (intelligence) {
-      setHitlClientName(intelligence.suggested_client_name || '');
-      setHitlCompanyName(intelligence.suggested_company_name || '');
-      setHitlRole(intelligence.suggested_role || 'CTO');
-    }
+    const currentName =
+      selectedJob?.intelligence?.confirmed_client_name ||
+      hitlClientName ||
+      intelligence?.suggested_client_name ||
+      '';
+    const currentCompany =
+      selectedJob?.intelligence?.confirmed_company_name ||
+      hitlCompanyName ||
+      intelligence?.suggested_company_name ||
+      '';
+    const currentRole =
+      selectedJob?.intelligence?.target_role ||
+      hitlRole ||
+      intelligence?.suggested_role ||
+      'CTO';
+
+    setHitlClientName(currentName);
+    setHitlCompanyName(currentCompany);
+    setHitlRole(currentRole);
     setIsHitlDialogOpen(true);
   };
 
-  // Direct Decision-Maker Discovery Trigger
+  // Direct Decision-Maker Discovery Trigger (preserved for when LinkedIn UI is re-enabled)
   const handleDirectDiscover = (targetUid?: string) => {
     const uid = targetUid || selectedJobUid;
     if (!uid) return;
     setErrorMessage(null);
     setActiveTab('intelligence');
-
-    if (selectedJob?.id && hitlClientName.trim()) {
-      confirmMutation.mutate(
-        {
-          job_id: selectedJob.id,
-          job_uid: uid,
-          confirmed_client_name: hitlClientName.trim(),
-          confirmed_company_name: hitlCompanyName.trim(),
-          target_role: hitlRole.trim() || 'CTO',
-          is_agency: intelligence?.is_agency || false,
-        },
-        {
-          onSuccess: () => {
-            discoverMutation.mutate(uid, {
-              onSuccess: (leads) => {
-                setDiscoveryResult(leads);
-                queryClient.invalidateQueries({ queryKey: ['job-details', uid] });
-                queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-                queryClient.invalidateQueries({ queryKey: ['dashboard-clients'] });
-              },
-              onError: (err) => {
-                setErrorMessage(err.message || 'Failed to discover leads on LinkedIn');
-              },
-            });
-          },
-          onError: () => {
-            discoverMutation.mutate(uid, {
-              onSuccess: (leads) => {
-                setDiscoveryResult(leads);
-              },
-            });
-          },
-        }
-      );
-      return;
-    }
 
     discoverMutation.mutate(uid, {
       onSuccess: (leads) => {
@@ -312,34 +317,41 @@ export function App() {
     });
   };
 
-  // Confirm Entity & Trigger Lead Discovery
-  const handleConfirmAndDiscover = () => {
-    const jobId = selectedJob?.id;
-    if (!jobId || !selectedJobUid) return;
+  // Save edited client details to PostgreSQL database
+  const handleSaveClientDetails = () => {
+    if (!selectedJobUid) return;
     setErrorMessage(null);
 
     const clientName =
       hitlClientName.trim() ||
-      selectedJob.intelligence?.confirmed_client_name ||
+      selectedJob?.intelligence?.confirmed_client_name ||
       intelligence?.suggested_client_name ||
       'Client';
 
+    const companyName = hitlCompanyName.trim();
+    const role = hitlRole.trim() || selectedJob?.intelligence?.target_role || 'CTO';
+
     confirmMutation.mutate(
       {
-        job_id: jobId,
+        job_id: selectedJob?.id || undefined,
         job_uid: selectedJobUid,
         confirmed_client_name: clientName,
-        confirmed_company_name: hitlCompanyName.trim(),
-        target_role: hitlRole.trim() || selectedJob.intelligence?.target_role || 'CTO',
+        confirmed_company_name: companyName || undefined,
+        target_role: role,
         is_agency: intelligence?.is_agency || false,
       },
       {
         onSuccess: () => {
           setIsHitlDialogOpen(false);
-          handleDirectDiscover(selectedJobUid);
+          // Invalidate relevant queries so the UI immediately reflects the DB update
+          queryClient.invalidateQueries({ queryKey: ['job-details', selectedJobUid] });
+          queryClient.invalidateQueries({ queryKey: ['job-intelligence', selectedJobUid] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-clients'] });
+          queryClient.invalidateQueries({ queryKey: ['harvested-jobs'] });
         },
         onError: (err) => {
-          setErrorMessage(err.message || 'Entity confirmation failed');
+          setErrorMessage(err.message || 'Failed to save client details to database');
         },
       }
     );
@@ -483,6 +495,7 @@ export function App() {
         onToggleDarkMode={toggleDarkMode}
         sessionStatus={sessionStatus}
         isLoadingSession={isLoadingSession}
+        onOpenSchedules={() => setIsScheduleDialogOpen(true)}
       />
 
       {/* Main Container */}
@@ -614,13 +627,13 @@ export function App() {
 
               {/* Right Pane: Deep Inspector & Scored Candidates (8 columns) */}
               <div className="lg:col-span-8 space-y-4">
-                {isLoadingJobDetail ? (
+                {isLoadingJobDetail && !isJobLoaded ? (
                   <Card className="p-6 space-y-4">
                     <Skeleton className="h-6 w-1/2" />
                     <Skeleton className="h-20 w-full" />
                     <Skeleton className="h-32 w-full" />
                   </Card>
-                ) : selectedJob ? (
+                ) : isJobLoaded && selectedJob ? (
                   <Card>
                     <CardHeader>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -651,15 +664,15 @@ export function App() {
                               </Badge>
                             )}
 
-                            {(hitlClientName || selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name) && (
+                            {(hitlClientName || selectedJob.intelligence?.confirmed_client_name || (intelligence?.job_uid === selectedJobUid && intelligence?.suggested_client_name)) && (
                               <Badge variant="brand" className="text-xs">
-                                Client: {hitlClientName || selectedJob.intelligence?.confirmed_client_name || intelligence?.suggested_client_name}
+                                Client: {hitlClientName || selectedJob.intelligence?.confirmed_client_name || (intelligence?.job_uid === selectedJobUid ? intelligence?.suggested_client_name : '')}
                               </Badge>
                             )}
 
-                            {(selectedJob.intelligence?.confirmed_company_name || intelligence?.suggested_company_name) && (
+                            {(selectedJob.intelligence?.confirmed_company_name || hitlCompanyName || (intelligence?.job_uid === selectedJobUid && intelligence?.suggested_company_name)) && (
                               <Badge variant="neutral" className="text-xs">
-                                Company: {selectedJob.intelligence?.confirmed_company_name || intelligence?.suggested_company_name}
+                                Company: {selectedJob.intelligence?.confirmed_company_name || hitlCompanyName || (intelligence?.job_uid === selectedJobUid ? intelligence?.suggested_company_name : '')}
                               </Badge>
                             )}
                           </div>
@@ -761,8 +774,8 @@ export function App() {
                           {/* Tab 1: Client Profile Entity Card */}
                           <TabsContent value="intelligence" className="pt-2 min-h-[440px]">
                             <IntelligenceCard
-                              intelligence={intelligence || null}
-                              confirmedIntelligence={selectedJob.intelligence || null}
+                              intelligence={intelligence?.job_uid === selectedJobUid ? intelligence : null}
+                              confirmedIntelligence={isJobLoaded ? selectedJob.intelligence || null : null}
                               clientLocation={
                                 selectedJob.client?.city && selectedJob.client?.country
                                   ? `${selectedJob.client.city}, ${selectedJob.client.country}`
@@ -917,8 +930,15 @@ export function App() {
           onCompanyNameChange={setHitlCompanyName}
           targetRole={hitlRole}
           onTargetRoleChange={setHitlRole}
-          onConfirm={handleConfirmAndDiscover}
-          isConfirming={confirmMutation.isPending || discoverMutation.isPending}
+          onConfirm={handleSaveClientDetails}
+          isConfirming={confirmMutation.isPending}
+        />
+
+        {/* Scheduled Keyword Automation & Email Delivery Modal */}
+        <ScheduleManagerDialog
+          open={isScheduleDialogOpen}
+          onOpenChange={setIsScheduleDialogOpen}
+          defaultKeyword={searchQuery}
         />
       </main>
     </div>

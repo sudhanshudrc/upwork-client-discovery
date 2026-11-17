@@ -48,4 +48,8 @@ class LeadDiscoveryResultResponse(BaseModel):
     direct_linkedin_search_urls: List[str] = Field(default_factory=list)
     search_variants: List[Dict[str, Any]] = Field(default_factory=list)
     excel_download_url: Optional[str] = None
+    linkedin_url_metro_name: Optional[str] = None
+    linkedin_url_metro_keywords: Optional[str] = None
+    linkedin_url_country_keywords: Optional[str] = None
+    linkedin_url_text_fallback: Optional[str] = None
 

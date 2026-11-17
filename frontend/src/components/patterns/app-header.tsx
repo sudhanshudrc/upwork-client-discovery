@@ -9,6 +9,7 @@ import {
   AlertCircle,
   KeyRound,
   ChevronRight,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
@@ -24,6 +25,7 @@ interface AppHeaderProps {
   onToggleDarkMode: () => void;
   sessionStatus?: SessionStatusResponse | null;
   isLoadingSession?: boolean;
+  onOpenSchedules?: () => void;
 }
 
 export function AppHeader({
@@ -33,6 +35,7 @@ export function AppHeader({
   onToggleDarkMode,
   sessionStatus,
   isLoadingSession = false,
+  onOpenSchedules,
 }: AppHeaderProps) {
   const { user, logout } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
@@ -134,8 +137,22 @@ export function AppHeader({
           </nav>
         </div>
 
-        {/* Right Section: Theme Toggle and Person Profile Menu */}
+        {/* Right Section: Schedules, Theme Toggle and Person Profile Menu */}
         <div className="flex items-center space-x-2.5">
+          {/* Schedules / Recurring Automation Trigger Button */}
+          {onOpenSchedules && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenSchedules}
+              className="h-10 px-3 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              title="Manage recurring keyword schedules & automated email delivery"
+            >
+              <Calendar className="size-4 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">Schedules</span>
+            </Button>
+          )}
+
           {/* Theme Toggle */}
           <Button
             variant="outline"

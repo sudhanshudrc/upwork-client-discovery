@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { motion } from 'framer-motion';
 import {
   Briefcase,
@@ -7,6 +8,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Star,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -65,6 +68,22 @@ export function JobFeedTable({
   onSelectJob,
   onInitialSearch,
 }: JobFeedTableProps) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(jobs.length / pageSize));
+
+  // Reset to page 1 whenever jobs list changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [jobs]);
+
+  // Keep current page within valid bounds
+  React.useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   if (jobs.length === 0) {
     return (
       <Card className="p-8 text-center space-y-3 border-dashed border-slate-300 dark:border-slate-700">
@@ -81,9 +100,13 @@ export function JobFeedTable({
     );
   }
 
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, jobs.length);
+  const pagedJobs = jobs.slice(startIndex, endIndex);
+
   return (
     <div className="space-y-2.5">
-      {jobs.map((job) => {
+      {pagedJobs.map((job) => {
         const isSelected = job.uid === selectedJobUid;
         const location = job.client_location || job.client_location_snippet || job.location;
         const displayBudget = cleanBudget(job.budget);
@@ -209,6 +232,58 @@ export function JobFeedTable({
           </motion.div>
         );
       })}
+
+      {/* Pagination Controls (10 jobs per page, e.g. Page 1, 2) */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 px-1 border-t border-slate-200 dark:border-slate-800">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+            Showing {startIndex + 1}–{endIndex} of {jobs.length} jobs (Page {currentPage} of {totalPages})
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="h-7 px-2 text-xs min-h-0 flex items-center gap-0.5"
+              title="Previous page"
+            >
+              <ChevronLeft className="size-3" />
+              <span>Prev</span>
+            </Button>
+
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+              <Button
+                key={pageNum}
+                variant={currentPage === pageNum ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => setCurrentPage(pageNum)}
+                className={cn(
+                  'h-7 w-7 p-0 text-xs font-semibold min-h-0 min-w-0',
+                  currentPage === pageNum
+                    ? 'bg-blue-600 text-white dark:bg-blue-600'
+                    : 'text-slate-700 dark:text-slate-300'
+                )}
+                title={`Page ${pageNum}`}
+              >
+                {pageNum}
+              </Button>
+            ))}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="h-7 px-2 text-xs min-h-0 flex items-center gap-0.5"
+              title="Next page"
+            >
+              <span>Next</span>
+              <ChevronRight className="size-3" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

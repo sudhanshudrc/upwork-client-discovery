@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from app.config import settings
 from app.models.base import Base
+from sqlalchemy.pool import NullPool
 
 
 # Determine pool arguments depending on dialect (PostgreSQL vs SQLite)
@@ -39,6 +40,51 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
+
+# Dedicated task engine for background workers (Celery) with NullPool to prevent
+# asyncpg connection pooling across multiple event loops and task executions.
+task_engine: AsyncEngine = create_async_engine(
+    settings.DATABASE_URL,
+    poolclass=NullPool,
+    echo=settings.DEBUG,
+)
+
+TaskAsyncSessionLocal = async_sessionmaker(
+    bind=task_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def get_task_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    On-demand async session context manager for Celery background tasks.
+    Creates a fresh, completely unpooled AsyncEngine with NullPool bound strictly
+    to the current active event loop, and disposes it completely on exit.
+    Prevents cross-event-loop connection sharing and process fork inheritance.
+    """
+    task_eng = create_async_engine(
+        settings.DATABASE_URL,
+        poolclass=NullPool,
+        echo=settings.DEBUG,
+    )
+    session_factory = async_sessionmaker(
+        bind=task_eng,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+    async with session_factory() as session:
+        try:
+            yield session
+        finally:
+            await task_eng.dispose()
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -84,6 +130,37 @@ async def init_db() -> None:
             await conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);"
+                )
+            )
+            # Synchronize scheduled_keyword_searches columns
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ADD COLUMN IF NOT EXISTS execution_time VARCHAR(10) DEFAULT '10:30' NOT NULL;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ADD COLUMN IF NOT EXISTS selected_days JSON DEFAULT '[]' NOT NULL;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'Asia/Kolkata' NOT NULL;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ADD COLUMN IF NOT EXISTS min_delay_seconds FLOAT DEFAULT 30.0 NOT NULL;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ADD COLUMN IF NOT EXISTS max_delay_seconds FLOAT DEFAULT 120.0 NOT NULL;"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduled_keyword_searches ALTER COLUMN interval_hours DROP NOT NULL;"
                 )
             )
             # Remove any existing session cookies for requested test resets

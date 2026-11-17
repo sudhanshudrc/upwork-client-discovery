@@ -17,6 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: upwork_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -26,7 +40,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
+      - .env
       - ./secrets/.env
     shm_size: "2gb"
     environment:
@@ -34,6 +51,10 @@ services:
       DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
       SECRET_KEY: ${SECRET_KEY:-default_upwork_automation_secret_key_32b}
       SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
       RATE_LIMIT_MIN_JITTER_SECONDS: 8.0
@@ -49,6 +70,73 @@ services:
     healthcheck:
       disable: true
 
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: upwork_celery_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+      - ./secrets/.env
+    shm_size: "2gb"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
+      DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      SECRET_KEY: ${SECRET_KEY:-default_upwork_automation_secret_key_32b}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+      RATE_LIMIT_MIN_JITTER_SECONDS: 8.0
+      RATE_LIMIT_MAX_JITTER_SECONDS: 15.0
+    volumes:
+      - ./data:/app/data
+      - ./secrets:/app/secrets
+      - ./app:/app/app
+      - ./static:/app/static
+    command: ["python", "-m", "celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: upwork_celery_beat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+      - ./secrets/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
+      DATABASE_SYNC_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-upwork_leads}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      SECRET_KEY: ${SECRET_KEY:-default_upwork_automation_secret_key_32b}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY:-}
+    volumes:
+      - ./data:/app/data
+      - ./secrets:/app/secrets
+      - ./app:/app/app
+    command: ["python", "-m", "celery", "-A", "app.core.celery_app", "beat", "--loglevel=info"]
+
 volumes:
   postgres_data:
+  redis_data:
 

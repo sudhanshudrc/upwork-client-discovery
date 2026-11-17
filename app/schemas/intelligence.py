@@ -23,6 +23,7 @@ class IntelligenceExtractionResponse(BaseModel):
     suggested_client_name: Optional[str] = None
     suggested_client_names: List[str] = Field(default_factory=list)
     suggested_company_name: Optional[str] = None
+    suggested_company_names: List[str] = Field(default_factory=list)
     suggested_role: str = "CTO"
     client_name_candidates: List[DiscoveredEntityItem] = Field(default_factory=list)
     company_candidates: List[DiscoveredEntityItem] = Field(default_factory=list)
@@ -34,10 +35,12 @@ class IntelligenceExtractionResponse(BaseModel):
 class UserConfirmationRequest(BaseModel):
     """Human-in-the-Loop: User validates, edits, or approves the client and organization name."""
 
-    job_id: uuid.UUID
+    job_id: Optional[uuid.UUID] = Field(None, description="Job ID (UUID)")
+    job_uid: Optional[str] = Field(None, description="Upwork job UID string")
     confirmed_client_name: str = Field(..., min_length=2, description="Target client person name")
     confirmed_company_name: Optional[str] = Field(None, description="Target company name")
     target_role: str = Field("CTO", description="Target role e.g. CTO, Founder, CEO")
+    is_agency: bool = Field(False, description="Whether the job is identified as an agency")
 
 
 class ClientIntelligenceResponse(BaseModel):

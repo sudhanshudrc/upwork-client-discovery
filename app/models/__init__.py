@@ -7,6 +7,7 @@ from app.models.contract import ClientContract
 from app.models.intelligence import ClientIntelligence
 from app.models.candidate import Candidate
 from app.models.user_session import UserSession
+from app.models.schedule import ScheduledKeywordSearch, ScheduleExecutionLog
 
 __all__ = [
     "Base",
@@ -18,5 +19,8 @@ __all__ = [
     "ClientIntelligence",
     "Candidate",
     "UserSession",
+    "ScheduledKeywordSearch",
+    "ScheduleExecutionLog",
 ]
+
 
